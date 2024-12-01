@@ -1,5 +1,10 @@
+use std::fs;
+use regex::Regex;
+
 fn main() {
-    println!("Hello, world!");
+    let (left, right) = load_input("input.txt");
+    let total_distance = calculate_total_distance(left, right);
+    println!("Total distance: {}", total_distance);
 }
 
 
@@ -18,6 +23,23 @@ pub fn calculate_total_distance(left: Vec<i32>, right: Vec<i32>) -> i32 {
     }).sum()
 }
 
+fn load_input(input_file: &str) -> (Vec<i32>, Vec<i32>) {
+    let content = fs::read_to_string(input_file).expect("Failed to read input file");
+    let re = Regex::new(r"(\d+)\s+(\d+)").expect("Invalid regex");
+
+    let (left, right): (Vec<_>, Vec<_>) = content
+        .lines()
+        .filter_map(|line| re.captures(line))
+        .map(|cap| {
+            let left = cap.get(1).unwrap().as_str().parse::<i32>().unwrap();
+            let right = cap.get(2).unwrap().as_str().parse::<i32>().unwrap();
+            (left, right)
+        })
+        .unzip();
+
+    (left, right)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -30,4 +52,14 @@ mod tests {
         let expected = 11;
         assert_eq!(expected, calculate_total_distance(left, right));
     }
+
+    #[test]
+    fn test_load_input() {
+        let test_file = "test_input.txt";
+        let (left, right) = load_input(test_file);
+        assert_eq!(left, vec![3, 4, 2, 1, 3, 3]);
+        assert_eq!(right, vec![4, 3, 5, 3, 9, 3]);
+    }
+
+
 }
