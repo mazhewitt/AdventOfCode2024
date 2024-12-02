@@ -7,8 +7,10 @@ fn main() {
     //load the input
     let input_file = "input.txt";
     let reports = load_input(input_file);
-    let safe_reports = count_number_of_safe_reports(reports);
+    let safe_reports = count_number_of_safe_reports(&reports);
     println!("Number of safe reports: {}", safe_reports);
+    let safe_reports_with_dampener = count_number_of_safe_reports_with_dampener(&reports);
+    println!("Number of safe reports with dampener: {}", safe_reports_with_dampener);
     
 }
 
@@ -23,8 +25,26 @@ fn is_safe(report: &[i32]) -> bool {
     })
 }
 
-fn count_number_of_safe_reports(reports: Vec<Vec<i32>>) -> i32 {
+fn is_safe_with_dapener(report: &[i32]) -> bool {
+    if !is_safe(report){
+        (0..report.len())
+            .map(|i| {
+                let mut sequence = report.to_vec();
+                sequence.remove(i);
+                sequence
+            })
+            .any(|sequence| is_safe(&sequence))
+    }
+    else { true }
+    
+}
+
+fn count_number_of_safe_reports(reports: &Vec<Vec<i32>>) -> i32 {
     reports.iter().filter(|report| is_safe(report)).count() as i32
+}
+
+fn count_number_of_safe_reports_with_dampener(reports: &Vec<Vec<i32>>) -> i32 {
+    reports.iter().filter(|report| is_safe_with_dapener(report)).count() as i32
 }
 
 fn load_input(input_file: &str) -> Vec<Vec<i32>> {
@@ -63,11 +83,11 @@ mod tests {
     fn test_count_number_of_safe_reports(){
         let reports = vec![vec![1,2,3,4,5], vec![1,2,3,3,4], vec![5,4,3,2,1]];
         let expected = 2;
-        assert_eq!(expected, count_number_of_safe_reports(reports));
+        assert_eq!(expected, count_number_of_safe_reports(&reports));
         
         let input_reports = load_input("test_input.txt");
         let expected_safe_reports = 3;
-        let safe_reports = count_number_of_safe_reports(input_reports);
+        let safe_reports = count_number_of_safe_reports(&input_reports);
         assert_eq!(expected_safe_reports, safe_reports);
     }
 
@@ -86,6 +106,24 @@ mod tests {
             vec![1, 2, 5, 6, 9, 11, 13, 15]
             ];
         assert_eq!(reports, expected);
+    }
+
+    #[test]
+    fn test_is_safe_with_dapener(){
+        let report = vec![1, 3, 2, 4, 5];
+        let expected = true;
+        assert_eq!(expected, is_safe_with_dapener(&report));
+        let input_reports = vec![
+            vec![7, 6, 4, 2, 1],
+            vec![1, 2, 7, 8, 9],
+            vec![9, 7, 6, 2, 1],
+            vec![1, 3, 2, 4, 5],
+            vec![8, 6, 4, 4, 1],
+            vec![1, 3, 6, 7, 9], 
+            ];
+        let expected_safe_reports = 4;
+        let safe_reports = count_number_of_safe_reports_with_dampener(&input_reports);
+        assert_eq!(expected_safe_reports, safe_reports);
     }
 
 
