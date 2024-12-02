@@ -27,15 +27,15 @@ pub fn calculate_total_distance(left: &[i32], right: &[i32]) -> i32 {
 }
 
 pub fn calculate_similarity_score(left: &[i32], right: &[i32]) -> i32 {
-   // for each occurence of a number in the left array, find the number of occurences in the right array
-   // multiply the number of occurences by the number itself and sum the results
+   // for each occurrence of a number in the left array, find the number of occurrences in the right array
+   // multiply the number of occurrences by the number itself and sum the results
     let mut right_counts = HashMap::new();
 
     for num in right {
-        *right_counts.entry(num).or_insert(0) += 1;
+        *right_counts.entry(*num).or_insert(0) += 1;
     }
     left.iter()
-        .map(|&num| num * right_counts.get(&num).unwrap_or(&0))
+        .map(|num| num * right_counts.get(num).unwrap_or(&0))
         .sum()
 }
 
