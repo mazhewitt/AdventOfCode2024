@@ -9,10 +9,15 @@ fn main() {
     let input_grid = read_file_to_2d_vec(input_file).unwrap();
     let result = find_all_xamases(&input_grid);
     println!("Number of XMASes found: {}", result);
+    let part2_result = find_x_mas(&input_grid);
+    println!("Number of XMASes found: {}", part2_result);
 }
 
 const XMAS: [char; 4] = ['X', 'M', 'A', 'S'];
 const SAMX: [char; 4] = ['S', 'A', 'M', 'X'];
+const MAS: [char; 3] = ['M', 'A', 'S'];
+const SAM: [char; 3] = ['S', 'A', 'M'];
+
 
 
 #[derive(Debug, PartialEq, EnumIter)]
@@ -139,6 +144,52 @@ fn find_all_xamases(input_grid: &Vec<Vec<char>>) -> usize {
     Direction::iter().map(|direction| find_xmas(input_grid, direction)).sum()
 }
 
+fn find_x_mas(input_grid: &Vec<Vec<char>>) -> usize {
+    let rows = input_grid.len();
+    let cols = input_grid[0].len();
+    let mut count = 0;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            if input_grid[row][col] == 'A' {
+                if row > 0 && row < rows - 1 && col > 0 && col < cols - 1 {
+                    // Check for 'MAS' and 'SAM' in diagonals around 'A'
+                    let subgrid: Vec<Vec<char>> = input_grid[row - 1..=row + 1].iter().map(|r| r[col - 1..=col + 1].to_vec()).collect();
+                    let mut found = false;
+                    
+                    found = find_diagonal_top_right_to_bottom_left(&subgrid, 3, 3, &SAM, 3) > 0 && find_diagonal_top_left_to_bottom_right(&subgrid, 3, 3, &MAS, 3) > 0;
+                    found |= find_diagonal_top_right_to_bottom_left(&subgrid, 3, 3, &MAS, 3) > 0 && find_diagonal_top_left_to_bottom_right(&subgrid, 3, 3, &SAM, 3) > 0;
+                    found |= find_diagonal_top_right_to_bottom_left(&subgrid, 3, 3, &MAS, 3) > 0 && find_diagonal_top_left_to_bottom_right(&subgrid, 3, 3, &MAS, 3) > 0;
+                    found |= find_diagonal_top_right_to_bottom_left(&subgrid, 3, 3, &SAM, 3) > 0 && find_diagonal_top_left_to_bottom_right(&subgrid, 3, 3, &SAM, 3) > 0;
+                    if found {
+                        print_subgrids_around_a(&subgrid);
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    count
+}
+fn print_subgrids_around_a(input_grid: &Vec<Vec<char>>) {
+    let rows = input_grid.len();
+    let cols = input_grid[0].len();
+
+    for row in 1..rows - 1 {
+        for col in 1..cols - 1 {
+            if input_grid[row][col] == 'A' {
+                println!("Subgrid around A at ({}, {}):", row, col);
+                for r in row - 1..=row + 1 {
+                    for c in col - 1..=col + 1 {
+                        print!("{}", input_grid[r][c]);
+                    }
+                    println!();
+                }
+                println!();
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -270,6 +321,29 @@ mod tests {
         assert_eq!(result, expected);
     }
 
+
+    #[test]
+    fn test_find_x_mas() {
+        let input_file = "test_input.txt";
+        let input_grid = read_file_to_2d_vec(input_file).unwrap();
+
+        let result = find_x_mas(&input_grid);
+        assert_eq!(result, 9);
+    }
+
+    
+    #[test]
+    fn find_single_xmas() {
+        let grid = vec![
+            vec!['A', 'S', 'A', 'X'],
+            vec!['X', 'M', 'A', 'M'], // XMAS
+            vec!['W', 'M', 'X', 'M'],
+            vec!['M', 'A', 'S', 'X'],
+        ];
+
+        let result = find_x_mas(&grid);
+        assert_eq!(result, 0);
+    }
 
 }
 
