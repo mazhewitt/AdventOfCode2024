@@ -10,6 +10,9 @@ fn main() {
 
     let result = sum_middle_nums_for_sorted(&pages, &comparator);
     println!("Sum of middle numbers: {}", result);
+    
+    let result2 = sum_middle_nums_for_unsorted(&pages, &comparator);
+    println!("Sum of middle numbers for unsorted: {}", result2);
 }
 
 struct RuleComparator{
@@ -69,6 +72,18 @@ fn sum_middle_nums_for_sorted(input: &Vec<Vec<usize>>, rules: &RuleComparator) -
     input.iter()
         .filter(|pages| is_in_order(pages, rules))
         .map(|group| group[group.len() / 2])
+        .sum()
+}
+
+fn sum_middle_nums_for_unsorted(input: &Vec<Vec<usize>>, rules: &RuleComparator) -> usize {
+    input.iter()
+        .filter(|pages| !is_in_order(pages, rules))
+        // sort the group and get the middle number
+        .map(|group| {
+            let mut sorted = group.clone();
+            sorted.sort_by(|a, b| rules.compare(*a, *b));
+            sorted[sorted.len() / 2]
+        })
         .sum()
 }
 
@@ -140,5 +155,16 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-   
+    #[test]
+    fn test_middle_number_for_unordered(){
+
+        let input_file = "test_input.txt";
+        let (rules, pages) = load_input(input_file);
+        let comparator = RuleComparator::new(rules);
+        let expected = 123;
+        let result = sum_middle_nums_for_unsorted(&pages, &comparator);
+        assert_eq!(result, expected);
+    }
+
+    
 }
