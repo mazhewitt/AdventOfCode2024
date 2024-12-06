@@ -7,12 +7,12 @@ use grid::*;
 
 fn main() {
     let input_file = "input.txt";
-    let grid = load_grid(input_file).expect("Failed to load grid");
+    let mut grid = load_grid(input_file).expect("Failed to load grid");
     let position = find_guard_position(&grid).expect("No Guard Found");
     let mut guard = Guard::new(position, Direction::UP);
     guard.move_until_left_or_looped(&grid);
     println!("Visited: {}", guard.visited.len());
-    let loops = find_looping_positions(&grid, position);
+    let loops = find_looping_positions(&mut grid, position);
     println!("Loops: {}", loops);
 
 }
@@ -113,20 +113,28 @@ fn will_loop(grid: &Grid<char>, position: (usize, usize), direction: Direction) 
 }
 
 // given a grid, add a # to each position and see if the guard will loop
-fn find_looping_positions(grid: &Grid<char>, guard_position: (usize,usize)) -> usize {
+fn find_looping_positions(grid: &mut Grid<char>, guard_position: (usize,usize)) -> usize {
     let mut looping_positions = 0;
-    for (row_idx, row) in grid.iter_rows().enumerate() {
-        for (col_idx, _) in row.enumerate() {
+
+    let row_count = grid.rows();
+    let col_count = grid.cols();
+
+    for row_idx in 0..row_count {
+        for col_idx in 0..col_count {
             if (row_idx, col_idx) == guard_position {
                 continue;
             }
-            let mut test_grid = grid.clone();
-            *test_grid.get_mut(row_idx, col_idx).unwrap() = '#';
-            if will_loop(&test_grid, guard_position, Direction::UP) {
+            if *grid.get(row_idx, col_idx).unwrap() == '#' {
+                continue;
+            }
+            *grid.get_mut(row_idx, col_idx).unwrap() = '#';
+            if will_loop(grid, guard_position, Direction::UP) {
                 looping_positions += 1;
             }
+            *grid.get_mut(row_idx, col_idx).unwrap() = '.';
         }
     }
+
     looping_positions
 }
 
@@ -182,7 +190,7 @@ mod tests {
         guard.move_until_left_or_looped(&grid);
         assert_eq!(guard.visited.len(), 41);
     }
-    
+
     #[test]
     fn test_will_loop() {
         let input_file = "looping_grid.txt";
@@ -190,13 +198,13 @@ mod tests {
         let position = find_guard_position(&grid).expect("No Guard Found");
         assert_eq!(will_loop(&grid, position, Direction::UP), true);
     }
-    
+
     #[test]
     fn test_count_loops() {
         let input_file = "test_input.txt";
-        let grid = load_grid(input_file).expect("Failed to load grid");
+        let mut grid = load_grid(input_file).expect("Failed to load grid");
         let position = find_guard_position(&grid).expect("No Guard Found");
-        let loops = find_looping_positions(&grid, position);
+        let loops = find_looping_positions(&mut grid, position);
         assert_eq!(loops, 6);
     }
 }
