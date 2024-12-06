@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io;
@@ -8,52 +9,125 @@ fn main() {
     let input_file = "input.txt";
     let grid = load_grid(input_file).expect("Failed to load grid");
     let position = find_guard_position(&grid).expect("No Guard Found");
-    let mut guard = Guard::new(position, (-1, 0));
-    guard.move_until_left(&grid);
+    let mut guard = Guard::new(position, Direction::UP);
+    guard.move_until_left_or_looped(&grid);
     println!("Visited: {}", guard.visited.len());
-    
+    let loops = find_looping_positions(&grid, position);
+    println!("Loops: {}", loops);
+
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+struct Direction {
+    d_row: isize,
+    d_col: isize,
+}
+
+impl Direction {
+    // Directions as constants
+    const UP: Direction = Direction { d_row: -1, d_col: 0 };
+    const DOWN: Direction = Direction { d_row: 1, d_col: 0 };
+    const LEFT: Direction = Direction { d_row: 0, d_col: -1 };
+    const RIGHT: Direction = Direction { d_row: 0, d_col: 1 };
+
+    // Method to turn right
+    fn turn_right(&self) -> Direction {
+        match *self {
+            Direction::UP => Direction::RIGHT,
+            Direction::RIGHT => Direction::DOWN,
+            Direction::DOWN => Direction::LEFT,
+            Direction::LEFT => Direction::UP,
+            _ => *self, // Default case if no match (shouldn't happen for valid directions)
+        }
+    }
 }
 
 struct Guard {
     position: (usize, usize),
-    direction: (isize, isize),
+    direction: Direction,
+    visited_with_direction: HashSet<((usize, usize), Direction)>,
     visited: HashSet<(usize, usize)>,
 }
 
+#[derive(Debug, PartialEq)]
+enum LoopOrExit {
+    Loop,
+    Exit,
+    Moving
+}
+
+
+
 impl Guard {
-    fn new(position: (usize, usize), direction: (isize, isize)) -> Guard {
+    fn new(position: (usize, usize), direction: Direction) -> Guard {
         let mut visited = HashSet::new();
         visited.insert(position);
+        let mut visited_with_direction = HashSet::new();
+        visited_with_direction.insert((position, direction));
         Guard {
             position,
             direction,
+            visited_with_direction,
             visited,
         }
     }
 
-    fn move_guard(&mut self, grid: &Grid<char>) -> bool {  
+    fn move_guard(&mut self, grid: &Grid<char>) -> LoopOrExit {
         let (row, col) = self.position;
-        let (d_row, d_col) = self.direction;
-        let new_row = (row as isize + d_row) as usize;
-        let new_col = (col as isize + d_col) as usize;
+        let new_row = (row as isize + self.direction.d_row) as usize;
+        let new_col = (col as isize + self.direction.d_col) as usize;
         if grid.get(new_row, new_col).is_none() {
-            return false
+            return LoopOrExit::Exit
         }
         if grid.get(new_row, new_col) == Some(&'#') {
             //turn right
-            self.direction = (d_col, -d_row);
-        } 
+            self.direction = self.direction.turn_right();
+        }
+        else if self.visited_with_direction.contains(&((new_row, new_col), self.direction)) {
+            return LoopOrExit::Loop
+        }
         else {
             self.position = (new_row, new_col);
+            self.visited_with_direction.insert((self.position, self.direction));
             self.visited.insert(self.position);
         }
-        true
+        LoopOrExit::Moving
     }
-    
-    fn move_until_left(&mut self, grid: &Grid<char>) {
-        while self.move_guard(grid) {}
+
+    fn move_until_left_or_looped(&mut self, grid: &Grid<char>) -> LoopOrExit{
+        let mut move_state = LoopOrExit::Moving;
+        while move_state == LoopOrExit::Moving {
+            move_state = self.move_guard(grid);
+        }
+        move_state
     }
-    
+}
+
+fn will_loop(grid: &Grid<char>, position: (usize, usize), direction: Direction) -> bool {
+    let mut guard = Guard::new(position, direction);
+    let looped_or_left = guard.move_until_left_or_looped(grid);
+    if looped_or_left == LoopOrExit::Loop {
+        return true;
+    }
+    false
+}
+
+// given a grid, add a # to each position and see if the guard will loop
+fn find_looping_positions(grid: &Grid<char>, guard_position: (usize,usize)) -> usize {
+    let mut looping_positions = 0;
+    for (row_idx, row) in grid.iter_rows().enumerate() {
+        for (col_idx, _) in row.enumerate() {
+            if (row_idx, col_idx) == guard_position {
+                continue;
+            }
+            let mut test_grid = grid.clone();
+            *test_grid.get_mut(row_idx, col_idx).unwrap() = '#';
+            if will_loop(&test_grid, guard_position, Direction::UP) {
+                looping_positions += 1;
+            }
+        }
+    }
+    looping_positions
 }
 
 
@@ -68,7 +142,7 @@ fn load_grid(input_file: &str) -> Result<grid::Grid<char>, io::Error> {
         let row: Vec<char> = line.chars().collect();
         grid.push_row(row);
     }
-    Ok(grid)    
+    Ok(grid)
 }
 
 fn find_guard_position(grid: &Grid<char>) -> Option<(usize, usize)> {
@@ -90,7 +164,7 @@ mod tests {
         let grid = load_grid(input_file).unwrap();
         assert_eq!(grid.size(), (10, 10));
     }
-    
+
     #[test]
     fn test_find_caret_position() {
         let input_file = "test_input.txt";
@@ -104,9 +178,25 @@ mod tests {
         let input_file = "test_input.txt";
         let grid = load_grid(input_file).expect("Failed to load grid");
         let position = find_guard_position(&grid).expect("No Guard Found");
-        let mut guard = Guard::new(position, (-1, 0));
-        guard.move_until_left(&grid);
+        let mut guard = Guard::new(position, Direction::UP);
+        guard.move_until_left_or_looped(&grid);
         assert_eq!(guard.visited.len(), 41);
     }
     
+    #[test]
+    fn test_will_loop() {
+        let input_file = "looping_grid.txt";
+        let grid = load_grid(input_file).expect("Failed to load grid");
+        let position = find_guard_position(&grid).expect("No Guard Found");
+        assert_eq!(will_loop(&grid, position, Direction::UP), true);
+    }
+    
+    #[test]
+    fn test_count_loops() {
+        let input_file = "test_input.txt";
+        let grid = load_grid(input_file).expect("Failed to load grid");
+        let position = find_guard_position(&grid).expect("No Guard Found");
+        let loops = find_looping_positions(&grid, position);
+        assert_eq!(loops, 6);
+    }
 }
