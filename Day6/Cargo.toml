@@ -1,0 +1,7 @@
+[package]
+name = "Day6"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grid = "0.15"
