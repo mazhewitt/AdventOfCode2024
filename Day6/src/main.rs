@@ -9,7 +9,7 @@ fn main() {
     let grid = load_grid(input_file).expect("Failed to load grid");
     let position = find_guard_position(&grid).expect("No Guard Found");
     let mut guard = Guard::new(position, (-1, 0));
-    while !guard.move_guard(&grid) {}
+    guard.move_until_left(&grid);
     println!("Visited: {}", guard.visited.len());
     
 }
@@ -31,13 +31,13 @@ impl Guard {
         }
     }
 
-    fn move_guard(&mut self, grid: &Grid<char>) -> bool {  // returns true if guard has left the grid
+    fn move_guard(&mut self, grid: &Grid<char>) -> bool {  
         let (row, col) = self.position;
         let (d_row, d_col) = self.direction;
         let new_row = (row as isize + d_row) as usize;
         let new_col = (col as isize + d_col) as usize;
         if grid.get(new_row, new_col).is_none() {
-            return true
+            return false
         }
         if grid.get(new_row, new_col) == Some(&'#') {
             //turn right
@@ -47,8 +47,13 @@ impl Guard {
             self.position = (new_row, new_col);
             self.visited.insert(self.position);
         }
-        false
+        true
     }
+    
+    fn move_until_left(&mut self, grid: &Grid<char>) {
+        while self.move_guard(grid) {}
+    }
+    
 }
 
 
@@ -100,7 +105,7 @@ mod tests {
         let grid = load_grid(input_file).expect("Failed to load grid");
         let position = find_guard_position(&grid).expect("No Guard Found");
         let mut guard = Guard::new(position, (-1, 0));
-        while !guard.move_guard(&grid) {}
+        guard.move_until_left(&grid);
         assert_eq!(guard.visited.len(), 41);
     }
     
