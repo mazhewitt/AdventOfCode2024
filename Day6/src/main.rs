@@ -4,15 +4,16 @@ use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use grid::*;
+use rayon::prelude::*;
 
 fn main() {
     let input_file = "input.txt";
-    let mut grid = load_grid(input_file).expect("Failed to load grid");
+    let grid = load_grid(input_file).expect("Failed to load grid");
     let position = find_guard_position(&grid).expect("No Guard Found");
     let mut guard = Guard::new(position, Direction::UP);
     guard.move_until_left_or_looped(&grid);
     println!("Visited: {}", guard.visited.len());
-    let loops = find_looping_positions(&mut grid, position);
+    let loops = find_looping_positions_parallel(grid, position);
     println!("Loops: {}", loops);
 
 }
@@ -138,6 +139,34 @@ fn find_looping_positions(grid: &mut Grid<char>, guard_position: (usize,usize)) 
     looping_positions
 }
 
+fn find_looping_positions_parallel(grid_o:  Grid<char>, guard_position: (usize, usize)) -> usize {
+    let row_count = grid_o.rows();
+    let col_count = grid_o.cols();
+    
+    (0..row_count)
+        .into_par_iter()
+        .map(|row_idx| {
+            let mut local_looping_positions = 0;
+            let mut grid = grid_o.clone();
+            for col_idx in 0..col_count {
+                if (row_idx, col_idx) == guard_position {
+                    continue;
+                }
+                if *grid.get(row_idx, col_idx).unwrap() == '#' {
+                    continue;
+                }
+
+                *grid.get_mut(row_idx, col_idx).unwrap() = '#';
+                if will_loop(&grid, guard_position, Direction::UP) {
+                    local_looping_positions += 1;
+                }
+                *grid.get_mut(row_idx, col_idx).unwrap() = '.';
+            }
+
+            local_looping_positions
+        })
+        .sum()
+}
 
 fn load_grid(input_file: &str) -> Result<grid::Grid<char>, io::Error> {
     let mut grid = Grid::new(0, 0);
@@ -202,9 +231,9 @@ mod tests {
     #[test]
     fn test_count_loops() {
         let input_file = "test_input.txt";
-        let mut grid = load_grid(input_file).expect("Failed to load grid");
+        let grid = load_grid(input_file).expect("Failed to load grid");
         let position = find_guard_position(&grid).expect("No Guard Found");
-        let loops = find_looping_positions(&mut grid, position);
+        let loops = find_looping_positions_parallel(grid, position);
         assert_eq!(loops, 6);
     }
 }
