@@ -4,6 +4,7 @@ use std::io;
 use std::io::BufRead;
 use grid::*;
 use itertools::Itertools;
+use num::integer::gcd;
 
 type Antenna = (isize, isize);
 type Frequency = char;
@@ -55,9 +56,9 @@ fn find_antennas(grid: &Grid<char>) -> HashMap<Frequency, AntennaSet> {
 fn find_antinodes(grid: &Grid<char>, antenna_set: &HashMap<Frequency, AntennaSet>) -> AntinodeSet {
     let mut antinodes = AntinodeSet::new();
     // iterate over antenna_set
-    antenna_set.iter().for_each(|(frequency, antenna_set)| {
+    antenna_set.iter().for_each(|(_, antenna_set)| {
         // for each pair of antennas
-        antenna_set.iter().combinations(2).for_each(|pair| {
+        for pair in antenna_set.iter().combinations(2) {
             let (a, b) = (pair[0], pair[1]);
             let (dx, dy) = (b.0 - a.0, b.1  - a.1 );
 
@@ -65,19 +66,46 @@ fn find_antinodes(grid: &Grid<char>, antenna_set: &HashMap<Frequency, AntennaSet
             let antinode1 = (b.0 + dx, b.1 + dy);
             let antinode2 = (a.0 - dx, a.1 - dy);
             // insert the antinodes into the set if they are inside the grid bounds
-            if grid.get(antinode1.0 as usize, antinode1.1 as usize) != None {
+            if grid.get(antinode1.0 as usize, antinode1.1 as usize).is_some() {
                 antinodes.insert(antinode1);
             }
-            if grid.get(antinode2.0 as usize, antinode2.1 as usize) != None {
+            if grid.get(antinode2.0 as usize, antinode2.1 as usize).is_some() {
                 antinodes.insert(antinode2);
             }
-        });
+        };
     });
-
-   
-
     antinodes
+}
 
+fn find_antilines(grid: &Grid<char>, antenna_set: &HashMap<Frequency, AntennaSet>) -> AntinodeSet {
+    let mut antinodes = AntinodeSet::new();
+
+    // Iterate over each frequency and its corresponding antenna set
+    for (_, antennas) in antenna_set {
+        
+        for pair in antennas.iter().combinations(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let (dx, dy) = (b.0 - a.0 , b.1  - a.1);
+            let step = gcd(dx.abs(), dy.abs());
+            let (step_x, step_y) = (dx / step, dy / step);
+
+            // Start stepping along the line
+            let mut current_x = a.0.min(b.0) as isize;
+            let mut current_y = a.1.min(b.1) as isize;
+            // Step backward to the minimum edge
+            while grid.get((current_x - step_x) as usize, (current_y - step_y) as usize).is_some() {
+                current_x -= step_x;
+                current_y -= step_y;
+            }
+            // Step forward until out of bounds
+            while grid.get(current_x as usize, current_y ).is_some() {
+                antinodes.insert((current_x , current_y));
+                current_x += step_x;
+                current_y += step_y;
+            }
+        }
+    }
+    antinodes
 }
 
 
@@ -109,6 +137,15 @@ mod tests {
         let antinodes = find_antinodes(&grid, &antennas);
         assert_eq!(antinodes.len(), 14);
     }
+
+    #[test]
+    fn test_find_antilines() {
+        let input_file = "test_input.txt";
+        let grid = load_grid(input_file).unwrap();
+        let antennas = find_antennas(&grid);
+        let antinodes = find_antilines(&grid, &antennas);
+        assert_eq!(antinodes.len(), 34);
+    }
     
     #[test]
     fn test_find_single_antinode() {
@@ -136,6 +173,29 @@ mod tests {
                 expected
             );
         }
+    }
+    
+    #[test]
+    fn test_find_single_antiline() {
+
+        let mut grid = Grid::new(12, 12);
+        grid.fill('.');
+        *grid.get_mut(0, 0).unwrap() = 'T';
+        *grid.get_mut(1, 3).unwrap() = 'T';
+        *grid.get_mut(2, 1).unwrap() = 'T';
+
+        let antennas = find_antennas(&grid);
+        let antinodes = find_antilines(&grid, &antennas);
+
+        println!("Antinode positions: {:?}", antinodes);
+        println!("Total unique antinodes: {}", antinodes.len());
+        
+        // for each antinode, print put a # in the grid
+        for (row, col) in antinodes {
+            *grid.get_mut(row as usize, col as usize).unwrap() = '#';
+        }
+        
+        println!("{:?}", grid)
     }
 
 
