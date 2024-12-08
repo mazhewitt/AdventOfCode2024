@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-grid = "0.15"
 itertools = "0.13.0"
-num = "0.4.3"
+grid = "0.15"
+num = "0.3.0"

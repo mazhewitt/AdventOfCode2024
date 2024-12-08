@@ -19,8 +19,20 @@ fn main() {
     let antennas = find_antennas(&grid);
     let antinodes = find_antinodes(&grid, &antennas);
     println!("Antinodes: {:?}", antinodes.len());
+    let antilines = find_antilines(&grid, &antennas);
+    println!("Antilines: {:?}", antilines.len());
 }
 
+pub fn print_grid(grid:Grid<char>) -> String {
+    let mut result = String::new();
+    for row in grid.iter_rows() {
+        for cell in row {
+            result.push(*cell);
+        }
+        result.push('\n');
+    }
+    result
+}
 
 fn load_grid(input_file: &str) -> Result<grid::Grid<char>, io::Error> {
     let mut grid = Grid::new(0, 0);
@@ -82,26 +94,28 @@ fn find_antilines(grid: &Grid<char>, antenna_set: &HashMap<Frequency, AntennaSet
 
     // Iterate over each frequency and its corresponding antenna set
     for (_, antennas) in antenna_set {
-        
         for pair in antennas.iter().combinations(2) {
             let (a, b) = (pair[0], pair[1]);
-            let (dx, dy) = (b.0 - a.0 , b.1  - a.1);
-            let step = gcd(dx.abs(), dy.abs());
-            let (step_x, step_y) = (dx / step, dy / step);
+            let (dc, dy) = (b.0 - a.0, b.1 - a.1);
+            let step = gcd(dc.abs(), dy.abs());
+            let (step_x, step_y) = (dc / step, dy / step);
 
-            // Start stepping along the line
-            let mut current_x = a.0.min(b.0) as isize;
-            let mut current_y = a.1.min(b.1) as isize;
-            // Step backward to the minimum edge
-            while grid.get((current_x - step_x) as usize, (current_y - step_y) as usize).is_some() {
-                current_x -= step_x;
-                current_y -= step_y;
-            }
-            // Step forward until out of bounds
-            while grid.get(current_x as usize, current_y ).is_some() {
-                antinodes.insert((current_x , current_y));
+            // Step from a to b and beyond
+            let mut current_x = a.0;
+            let mut current_y = a.1;
+            while grid.get(current_x as usize, current_y as usize).is_some() {
+                antinodes.insert((current_x, current_y));
                 current_x += step_x;
                 current_y += step_y;
+            }
+
+            // Step from b to a and beyond
+            let mut current_x = b.0;
+            let mut current_y = b.1;
+            while grid.get(current_x as usize, current_y as usize).is_some() {
+                antinodes.insert((current_x, current_y));
+                current_x -= step_x;
+                current_y -= step_y;
             }
         }
     }
@@ -146,7 +160,7 @@ mod tests {
         let antinodes = find_antilines(&grid, &antennas);
         assert_eq!(antinodes.len(), 34);
     }
-    
+
     #[test]
     fn test_find_single_antinode() {
         // create a 12 by 12 grid
@@ -174,11 +188,11 @@ mod tests {
             );
         }
     }
-    
+
     #[test]
     fn test_find_single_antiline() {
 
-        let mut grid = Grid::new(12, 12);
+        let mut grid = Grid::new(10, 10);
         grid.fill('.');
         *grid.get_mut(0, 0).unwrap() = 'T';
         *grid.get_mut(1, 3).unwrap() = 'T';
@@ -189,13 +203,14 @@ mod tests {
 
         println!("Antinode positions: {:?}", antinodes);
         println!("Total unique antinodes: {}", antinodes.len());
-        
+
         // for each antinode, print put a # in the grid
-        for (row, col) in antinodes {
-            *grid.get_mut(row as usize, col as usize).unwrap() = '#';
+        for (row, col) in &antinodes {
+            *grid.get_mut(*row as usize, *col as usize).unwrap() = '#';
         }
-        
-        println!("{:?}", grid)
+
+        println!("{}", print_grid(grid));
+        assert_eq!(antinodes.len(), 9);
     }
 
 
