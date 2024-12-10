@@ -4,7 +4,7 @@ fn main() {
     let input_file = "input.txt";
     let grid_str = std::fs::read_to_string(input_file).unwrap();
     let (grid, summits, trail_heads) = load_grid_from_str(&grid_str);
-    let total_summits_reached = find_summets(&grid, summits, trail_heads);
+    let total_summits_reached = find_summits(&grid, summits, trail_heads);
     println!("Part1: {:?}", total_summits_reached);
 }
 
@@ -35,7 +35,7 @@ fn load_grid_from_str(input: &str) -> (Grid<u8>, Summits, TrailHeads) {
     (grid, summits, trail_heads)
 }
 
-fn find_summets(grid: &Grid<u8>, summits: Summits, trail_heads: TrailHeads) -> usize {
+fn find_summits(grid: &Grid<u8>, summits: Summits, trail_heads: TrailHeads) -> usize {
     //bfs to find the number of summits reachable from the trail heads
 
     let mut num_summits_reached = 0;
@@ -88,7 +88,7 @@ mod tests {
     fn can_find_path() {
         let grid_str = "0123\n1234\n8765\n9876";
         let (grid, summits, trail_heads) = load_grid_from_str(grid_str);
-        let total_summits_reached = find_summets(&grid, summits, trail_heads);
+        let total_summits_reached = find_summits(&grid, summits, trail_heads);
         assert_eq!(total_summits_reached, 1)
     }
 
@@ -97,7 +97,7 @@ mod tests {
         let input_file = "test_input.txt";
         let grid_str = std::fs::read_to_string(input_file).unwrap();
         let (grid, summits, trail_heads) = load_grid_from_str(&grid_str);
-        let total_summits_reached = find_summets(&grid, summits, trail_heads);
+        let total_summits_reached = find_summits(&grid, summits, trail_heads);
         assert_eq!(total_summits_reached, 36)
     }
     #[test]
@@ -107,7 +107,7 @@ mod tests {
         let (grid, summits, trail_heads) = load_grid_from_str(&grid_str);
         assert_eq!(summits.len(), 2);
         assert_eq!(trail_heads.len(), 1);
-        let total_summits_reached = find_summets(&grid, summits, trail_heads);
+        let total_summits_reached = find_summits(&grid, summits, trail_heads);
         assert_eq!(total_summits_reached, 2);
     }
 }
