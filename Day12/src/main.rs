@@ -1,10 +1,13 @@
-use std::collections::HashSet;
+use std::collections::{HashSet};
 use pathfinding::grid::Grid;
+
 fn main() {
     let grid_data = Farm::load_input("input.txt");
     let regions = grid_data.get_regions_for_grid();
     let result = calculate_total_score(&grid_data.grid_data, &regions);
     println!("Total score: {}", result);
+    let edge_score = regions.iter().map(|region|caclulate_edge_score_for_region(region)).sum::<usize>();
+    println!("Edge score: {}", edge_score);
 }
 
 type Cell = (usize, usize);
@@ -68,8 +71,9 @@ impl Farm {
     }
 }
 
-fn calculate_perimeter(region: &Plot, rows: usize, cols: usize) -> usize {
+fn calculate_perimeter(region: &Plot, rows: usize, cols: usize) -> (usize, HashSet<Cell>) {
     let mut perimeter = 0;
+    let mut perimeter_cells = HashSet::new();
 
     for &(r, c) in region {
         let neighbors = [
@@ -83,17 +87,19 @@ fn calculate_perimeter(region: &Plot, rows: usize, cols: usize) -> usize {
             // Check boundary
             if nr >= rows || nc >= cols {
                 perimeter += 1;
+                perimeter_cells.insert((r, c));
             } else if !region.contains(&(nr, nc)) {
                 perimeter += 1;
+                perimeter_cells.insert((r, c));
             }
         }
     }
 
-    perimeter
+    (perimeter, perimeter_cells)
 }
 
 fn calculate_score_for_region(grid_data: &[Vec<char>], region: &Plot) -> usize {
-    let perimeter = calculate_perimeter(&region, grid_data.len(), grid_data[0].len());
+    let (perimeter, _) = calculate_perimeter(&region, grid_data.len(), grid_data[0].len());
     let score = region.len() * perimeter;
     score
 }
@@ -102,6 +108,66 @@ fn calculate_total_score(grid_data: &[Vec<char>], regions: &[Plot]) -> usize {
     regions.iter().map(|region| calculate_score_for_region(grid_data, region)).sum::<usize>()
 }
 
+pub fn sides(region: &Plot) -> usize {
+    let mut corner_candidates = HashSet::new();
+
+    for &(r, c) in region {
+        let (r, c) = (r as isize, c as isize);
+        corner_candidates.insert((2 * r - 1, 2 * c - 1));
+        corner_candidates.insert((2 * r + 1, 2 * c - 1));
+        corner_candidates.insert((2 * r + 1, 2 * c + 1));
+        corner_candidates.insert((2 * r - 1, 2 * c + 1));
+    }
+
+    let mut corners = 0usize;
+
+    for &(cr, cc) in &corner_candidates {
+
+        let neighbors = [
+            (cr - 1, cc - 1),
+            (cr + 1, cc - 1),
+            (cr + 1, cc + 1),
+            (cr - 1, cc + 1),
+        ];
+
+        // Check which of these corresponds to a cell in the region
+        let config: Vec<bool> = neighbors.iter().map(|&(nr, nc)| {
+            let (cell_r, cell_c) = ((nr / 2) as usize, (nc / 2) as usize);
+            if nr < 0 || nc < 0 {
+                false
+            } else {
+                region.contains(&(cell_r, cell_c))
+            }
+        }).collect();
+
+        let number = config.iter().filter(|&&x| x).count();
+
+        // Use the same corner counting logic as the Python code
+        match number {
+            1 => {
+                corners += 1;
+            }
+            2 => {
+                // Two diagonally placed cells count as 2 corners
+                if (config[0] && config[2] && !config[1] && !config[3])
+                    || (config[1] && config[3] && !config[0] && !config[2])
+                {
+                    corners += 2;
+                }
+            }
+            3 => {
+                corners += 1;
+            }
+            _ => {}
+        }
+    }
+    corners
+}
+
+fn caclulate_edge_score_for_region(region: &Plot) -> usize {
+    let sides = sides(region);
+    sides * region.len()
+}
 
 #[cfg(test)]
 mod tests {
@@ -128,8 +194,19 @@ mod tests {
     fn test_get_parimeter_for_region() {
         let grid_data = Farm::load_input("test_input.txt");
         let region = grid_data.get_region_from_grid(0, 0);
-        let perimeter = calculate_perimeter(&region, grid_data.grid_data.len(), grid_data.grid_data[0].len());
+        let (perimeter, cells) = calculate_perimeter(&region, grid_data.grid_data.len(), grid_data.grid_data[0].len());
         assert_eq!(perimeter, 18);
+        assert_eq!(cells.len(), 11);
+    }
+
+    #[test]
+    fn test_calculate_num_edges() {
+        let grid_data = Farm::load_input("test_input.txt");
+        let region = grid_data.get_region_from_grid(0, 0);
+        let input = std::fs::read_to_string("test_input.txt").unwrap();
+        println!("{}", input);
+        let sides = sides(&region);
+        assert_eq!(sides, 10);
     }
 
     #[test]
@@ -145,7 +222,11 @@ mod tests {
         let region = grid_data.get_region_from_grid(0, 0);
         let score = calculate_score_for_region(&grid_data.grid_data, &region);
         assert_eq!(score, 216);
+        let edge_score = caclulate_edge_score_for_region(&region);
+        assert_eq!(edge_score, 120);
     }
+
+
 
     #[test]
     fn test_can_calculate_total_score() {
@@ -154,4 +235,16 @@ mod tests {
         let result = calculate_total_score(&grid_data.grid_data, &regions);
         assert_eq!(result, 1930);
     }
+
+    #[test]
+    fn test_calculate_edge_score() {
+        let grid_data = Farm::load_input("test_input.txt");
+        let regions = grid_data.get_regions_for_grid();
+
+
+        let edge_score = regions.iter().map(|region|caclulate_edge_score_for_region(region)).sum::<usize>();
+        assert_eq!(edge_score, 1206);
+    }
+
+
 }
