@@ -142,7 +142,6 @@ pub fn sides(region: &Plot) -> usize {
 
         let number = config.iter().filter(|&&x| x).count();
 
-        // Use the same corner counting logic as the Python code
         match number {
             1 => {
                 corners += 1;
