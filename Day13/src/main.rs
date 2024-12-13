@@ -4,14 +4,14 @@ fn main() {
     let claw_machines = ClawMachine::from_file("input.txt");
 
     let total_minimum_cost: u128 = claw_machines.iter()
-        .map(|machine| machine.calculate_minimum_cost(machine.prize.0, machine.prize.1, Some(100)).unwrap_or(0))
+        .map(|machine| machine.calculate_minimum_cost().unwrap_or(0))
         .sum();
 
     println!("The smallest cost to win is: {}", total_minimum_cost);
 
     let large_offset: i128 = 10_000_000_000_000;
     let total_minimum_cost_with_offset: u128 = claw_machines.iter()
-        .map(|machine| machine.calculate_minimum_cost(machine.prize.0 + large_offset, machine.prize.1 + large_offset, None).unwrap_or(0))
+        .map(|machine| machine.calculate_minimum_cost_with_offset(large_offset).unwrap_or(0))
         .sum();
 
     println!("The smallest cost to win with added offset is: {}", total_minimum_cost_with_offset);
@@ -71,7 +71,15 @@ impl ClawMachine {
         claw_machines
     }
 
-    fn calculate_minimum_cost(&self, prize_x: i128, prize_y: i128, press_limit: Option<i128>) -> Option<u128> {
+    fn calculate_minimum_cost(&self) -> Option<u128>{
+        self.calculate_minimum_cost_i(self.prize.0, self.prize.1, Some(100))
+    }
+
+    fn calculate_minimum_cost_with_offset(&self, large_offset: i128) -> Option<u128>{
+        self.calculate_minimum_cost_i(self.prize.0+large_offset, self.prize.1+large_offset, None)
+    }
+
+    fn calculate_minimum_cost_i(&self, prize_x: i128, prize_y: i128, press_limit: Option<i128>) -> Option<u128> {
         let determinant = self.button_a.0 * self.button_b.1 - self.button_a.1 * self.button_b.0;
         if determinant == 0 {
             return None;
@@ -139,7 +147,7 @@ mod tests {
     fn test_calculate_minimum_cost() {
         let data = "Button A: X+94, Y+34\nButton B: X+22, Y+67\nPrize: X=8400, Y=5400";
         let machine = ClawMachine::from_serialised(data).unwrap();
-        let cost = machine.calculate_minimum_cost(machine.prize.0, machine.prize.1, Some(100));
+        let cost = machine.calculate_minimum_cost();
         assert_eq!(cost.unwrap(), 280);
     }
 
@@ -147,7 +155,7 @@ mod tests {
     fn test_no_solution() {
         let data = "Button A: X+26, Y+66\nButton B: X+67, Y+21\nPrize: X=12748, Y=12176";
         let machine = ClawMachine::from_serialised(data).unwrap();
-        let cost = machine.calculate_minimum_cost(machine.prize.0, machine.prize.1, Some(100));
+        let cost = machine.calculate_minimum_cost();
         assert_eq!(cost, None);
     }
 
@@ -155,7 +163,7 @@ mod tests {
     fn test_total_minimum_cost() {
         let machines = ClawMachine::from_file("test_input.txt");
         let total_cost: u128 = machines.iter()
-            .map(|machine| machine.calculate_minimum_cost(machine.prize.0, machine.prize.1, Some(100)).unwrap_or(0))
+            .map(|machine| machine.calculate_minimum_cost().unwrap_or(0))
             .sum();
         assert_eq!(total_cost, 480);
     }
@@ -165,7 +173,7 @@ mod tests {
         let data = "Button A: X+94, Y+34\nButton B: X+22, Y+67\nPrize: X=8400, Y=5400";
         let machine = ClawMachine::from_serialised(data).unwrap();
         let offset = 10_000_000_000_000;
-        let cost = machine.calculate_minimum_cost(machine.prize.0 + offset, machine.prize.1 + offset, None);
+        let cost = machine.calculate_minimum_cost_with_offset(offset);
         assert_eq!(cost, None);
     }
 }
