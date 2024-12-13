@@ -1,4 +1,3 @@
-use good_lp::{variables, variable, Solution, SolverModel, default_solver};
 use regex::Regex;
 
 
@@ -11,7 +10,7 @@ fn main() {
     println!("The smallest cost to win is: {}", smallest_cost);
 }
 
-type Offset = (usize, usize);
+type Offset = (isize, isize);
 
 struct ClawMachine {
     button_a: Offset,
@@ -33,12 +32,12 @@ impl ClawMachine {
     fn from_serialised(data: &str) -> Option<ClawMachine> {
         let re = Regex::new(r"Button A: X\+(\d+), Y\+(\d+)\nButton B: X\+(\d+), Y\+(\d+)\nPrize: X=(\d+), Y=(\d+)").unwrap();
         if let Some(cap) = re.captures(data) {
-            let button_a_x: usize = cap[1].parse().ok()?;
-            let button_a_y: usize = cap[2].parse().ok()?;
-            let button_b_x: usize = cap[3].parse().ok()?;
-            let button_b_y: usize = cap[4].parse().ok()?;
-            let prize_x: usize = cap[5].parse().ok()?;
-            let prize_y: usize = cap[6].parse().ok()?;
+            let button_a_x: isize = cap[1].parse().ok()?;
+            let button_a_y: isize = cap[2].parse().ok()?;
+            let button_b_x: isize = cap[3].parse().ok()?;
+            let button_b_y: isize = cap[4].parse().ok()?;
+            let prize_x: isize = cap[5].parse().ok()?;
+            let prize_y: isize = cap[6].parse().ok()?;
 
             Some(ClawMachine {
                 button_a: (button_a_x, button_a_y),
@@ -71,33 +70,22 @@ impl ClawMachine {
     pub(crate) fn smallest_cost_to_win(&self) -> Option<usize> {
         let (ax, ay) = self.button_a;
         let (bx, by) = self.button_b;
-        let (prize_x, prize_y) = self.prize;
+        let (px, py) = self.prize;
 
-
-        variables! {
-        vars:
-            0 <= x <= 100; // Number of times to press A
-            0 <= y <= 100; // Number of times to press B
+        let ca = (px * by - py *bx) / (ax *by - ay *bx);
+        let cb = (px -ax * ca) / bx;
+        if ax * by - ay * bx == 0{
+            return None;
+        }
+        else if  ca >= 100 || cb >= 100 {
+            return None;
+        }
+        else if (ca % 1) == 0 && (cb % 1)  == 0{
+            return Some((ca *3 +cb)as usize);
         }
 
+        None
 
-        let solution = vars
-            .minimise(3 * x + 1 * y) // Minimize the total cost
-            .using(default_solver)
-            .with((ax as f64) * x + (bx as f64) * y << prize_x as f64) // Align X
-            .with((ay as f64) * x + (by as f64) * y << prize_y as f64) // Align Y
-            .solve();
-
-        match solution {
-            Ok(result) => {
-                let x_val = result.value(x) as i32;
-                let y_val = result.value(y) as i32;
-                let cost = 3 * x_val + 1 * y_val;
-                Some(cost as usize)
-            }
-            Err(_) => None, // No solution found
-
-        }
     }
 
 }
