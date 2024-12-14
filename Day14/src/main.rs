@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::ops::Neg;
 use num::integer::lcm;
-use image::{codecs::gif::GifEncoder, Delay, Frame, ImageBuffer, Pixel, Rgba, RgbaImage};
-use image::gif::Repeat;
+use image::{ImageBuffer, Pixel, Rgba, RgbaImage};
 use image::png::PngEncoder;
 use regex::Regex;
 
@@ -13,14 +15,10 @@ fn main() {
     let num_moves = 100;
     let safety_score = move_and_get_safety_score(&robots, bathroom_width, bathroom_height, num_moves);
     println!("Safety score: {}", safety_score);
-    let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
-    let moved_robots = robots.iter().map(|robot| robot.move_robot(cycle_length as i32, bathroom_width, bathroom_height)).collect::<Vec<Robot>>();
-    assert_eq!(robots, moved_robots);
-    println!("Cycle length: {}", cycle_length);
-
-    
-   generate_png(&robots, bathroom_width as u32, bathroom_height as u32, cycle_length as i32, "images");
-
+    let christmas_tree_time = find_christmas_tree(&robots, bathroom_width, bathroom_height);
+    println!("Christmas tree time: {}", christmas_tree_time);   
+    let moved_robots = robots.iter().map(|robot| robot.move_robot((christmas_tree_time) as i32, bathroom_width, bathroom_height)).collect::<Vec<Robot>>();
+    generate_png(&moved_robots, bathroom_width as u32, bathroom_height as u32, ".", christmas_tree_time as i32).unwrap();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -52,7 +50,7 @@ impl Robot {
     }
 
     fn move_robot(&self, num_moves:i32, width: i32, height: i32) -> Robot{
-        let new_x = (self.pos.0 + self.vel.0 * num_moves).rem_euclid(width);;
+        let new_x = (self.pos.0 + self.vel.0 * num_moves).rem_euclid(width);
         let new_y = (self.pos.1 + self.vel.1 * num_moves).rem_euclid(height);
         Robot {
             pos: (new_x, new_y),
@@ -87,40 +85,29 @@ impl Robot {
 }
 
 
-fn generate_png(
-    robots: &[Robot],
-    width: u32,
-    height: u32,
-    max_time: i32,
-    output_dir: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure the output directory exists
-    std::fs::create_dir_all(output_dir)?;
 
-    for t in 0..=max_time {
-        // Create an empty RGBA image with a black background
-        let mut img: RgbaImage = ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 255]));
 
-        // Draw robots
-        for robot in robots {
-            let (x, y) = robot.move_robot(t, width as i32, height as i32).pos;
-            if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
-                img.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, 255])); // White pixel for robot
-            }
+fn generate_png(robots: &[Robot], width: u32, height: u32, output_dir: &str, t: i32) -> Result<(), Box<dyn Error>> {
+    let mut img: RgbaImage = ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 255]));
+
+    // Draw robots
+    for robot in robots {
+        let (x, y) = robot.pos;
+        if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+            img.put_pixel(x as u32, y as u32, Rgba([255, 255, 255, 255])); // White pixel for robot
         }
-
-        // Create the file name and write the PNG
-        let file_name = format!("{}/frame_{:04}.png", output_dir, t); // Zero-padded for sorting
-        let output_file = File::create(file_name)?;
-        let encoder = PngEncoder::new(output_file);
-        encoder.encode(
-            &img,
-            width,
-            height,
-            Rgba::<u8>::color_type(),
-        )?;
     }
 
+    // Create the file name and write the PNG
+    let file_name = format!("{}/frame_{:04}.png", output_dir, t); // Zero-padded for sorting
+    let output_file = File::create(file_name)?;
+    let encoder = PngEncoder::new(output_file);
+    encoder.encode(
+        &img,
+        width,
+        height,
+        Rgba::<u8>::color_type(),
+    )?;
     Ok(())
 }
 
@@ -145,6 +132,28 @@ fn move_and_get_safety_score(robots: &Vec<Robot>, bathroom_width: i32, bathroom_
     safety_score
 }
 
+fn calculate_entropy(robots: &[Robot], bin_size: i32) -> f64 {
+
+
+    let mut counts = HashMap::new();
+    for &robot in robots {
+        let bin_x = robot.pos.0 / bin_size;
+        let bin_y = robot.pos.1 / bin_size;
+        *counts.entry((bin_x, bin_y)).or_insert(0) += 1;
+    }
+    let total = robots.len() as f64;
+
+    // Compute probabilities and Shannon entropy
+    counts
+        .values()
+        .map(|&count| {
+            let p = count as f64 / total;
+            p * p.log2()
+        })
+        .sum::<f64>()
+        .neg()
+}
+
 fn gcd(a: i32, b: i32) -> i32 {
     if b == 0 {
         a.abs()
@@ -165,6 +174,22 @@ fn calculate_cycle_length(robots: &[Robot], width: i32, height: i32) -> i64 {
         // Combine horizontal and vertical cycles for this robot
         lcm(tx as i64, ty as i64)
     }).fold(1, lcm)
+}
+
+fn find_christmas_tree(robots: &[Robot], bathroom_width: i32, bathroom_height: i32) -> i64 {
+    let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
+    // for each time until cycle length, move the robots, then measure the entropy, get the time with the lowest entropy
+    let mut min_entropy = std::f64::INFINITY;
+    let mut min_entropy_time = 0;
+    for t in 1..cycle_length {
+        let moved_robots = robots.iter().map(|robot| robot.move_robot(t as i32, bathroom_width, bathroom_height)).collect::<Vec<Robot>>();
+        let entropy = calculate_entropy(&moved_robots, 10);
+        if entropy < min_entropy {
+            min_entropy = entropy;
+            min_entropy_time = t;
+        }
+    }
+    min_entropy_time
 }
 
 #[cfg(test)]
@@ -193,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_find_quad(){
-        let mut robot = Robot::from_str("p=1,1 v=2,-3");
+        let robot = Robot::from_str("p=1,1 v=2,-3");
         let quad = robot.determine_quadrant(11, 7);
         assert_eq!(quad, Some(1));
     }
@@ -208,8 +233,6 @@ mod tests {
 
         let safety_score = move_and_get_safety_score(&mut robots, bathroom_width, bathroom_height, num_moves);
         assert_eq!(safety_score, 12);
-        let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
-        generate_png(&robots, bathroom_width as u32, bathroom_height as u32, cycle_length as i32, "images");
 
     }
 
@@ -231,6 +254,16 @@ mod tests {
         let moved_robots = vec![robot_0, robot_1];
         assert_eq!(robots, moved_robots);
         
+    }
+    
+    #[test]
+    fn test_can_find_christmas_tree() {
+        let mut robots = Robot::from_file("input.txt");
+        let bathroom_width = 101;
+        let bathroom_height = 103;
+
+        let min_entropy_time = find_christmas_tree(&mut robots, bathroom_width, bathroom_height);
+        assert_eq!(min_entropy_time, 6577);
     }
 
     
