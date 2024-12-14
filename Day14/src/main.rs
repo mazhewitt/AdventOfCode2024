@@ -1,20 +1,29 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use image::{codecs::gif::GifEncoder, Delay, Frame, ImageBuffer, Rgba};
+use num::integer::lcm;
+use image::{codecs::gif::GifEncoder, Delay, Frame, ImageBuffer, Pixel, Rgba, RgbaImage};
 use image::gif::Repeat;
+use image::png::PngEncoder;
 use regex::Regex;
 
 fn main() {
-    let mut robots = Robot::from_file("input.txt");
+    let robots = Robot::from_file("input.txt");
     let bathroom_width = 101;
     let bathroom_height = 103;
-    let num_moves = 1000;
-    let safety_score = move_and_get_safety_score(&mut robots, bathroom_width, bathroom_height, num_moves);
+    let num_moves = 100;
+    let safety_score = move_and_get_safety_score(&robots, bathroom_width, bathroom_height, num_moves);
     println!("Safety score: {}", safety_score);
-    generate_gif(&robots, bathroom_width as u32, bathroom_height as u32, num_moves, "output.gif");
+    let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
+    let moved_robots = robots.iter().map(|robot| robot.move_robot(cycle_length as i32, bathroom_width, bathroom_height)).collect::<Vec<Robot>>();
+    assert_eq!(robots, moved_robots);
+    println!("Cycle length: {}", cycle_length);
+
+    
+   generate_png(&robots, bathroom_width as u32, bathroom_height as u32, cycle_length as i32, "images");
 
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Robot {
     pos: (i32, i32),
     vel: (i32, i32),
@@ -43,7 +52,7 @@ impl Robot {
     }
 
     fn move_robot(&self, num_moves:i32, width: i32, height: i32) -> Robot{
-        let new_x = (self.pos.0 + self.vel.0 * num_moves).rem_euclid(width );
+        let new_x = (self.pos.0 + self.vel.0 * num_moves).rem_euclid(width);;
         let new_y = (self.pos.1 + self.vel.1 * num_moves).rem_euclid(height);
         Robot {
             pos: (new_x, new_y),
@@ -78,15 +87,19 @@ impl Robot {
 }
 
 
-fn generate_gif(robots: &[Robot], width: u32, height: u32, max_time: i32, output: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Create output file and GIF encoder
-    let output_file = File::create(output)?;
-    let mut encoder = GifEncoder::new(output_file);
-    encoder.set_repeat(Repeat::Infinite)?;
+fn generate_png(
+    robots: &[Robot],
+    width: u32,
+    height: u32,
+    max_time: i32,
+    output_dir: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Ensure the output directory exists
+    std::fs::create_dir_all(output_dir)?;
 
     for t in 0..=max_time {
-        // Create an empty RGBA image
-        let mut img = ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 255]));
+        // Create an empty RGBA image with a black background
+        let mut img: RgbaImage = ImageBuffer::from_pixel(width, height, Rgba([0, 0, 0, 255]));
 
         // Draw robots
         for robot in robots {
@@ -96,31 +109,28 @@ fn generate_gif(robots: &[Robot], width: u32, height: u32, max_time: i32, output
             }
         }
 
-        // Draw timestamp in top-right corner
-        let timestamp = format!("{:02}", t);
-        let start_x = width.saturating_sub(10) as i32; // Adjust as needed for text length
-        let start_y = 2;
-        for (i, ch) in timestamp.chars().enumerate() {
-            let pixel_x = start_x + i as i32;
-            if pixel_x >= 0 && pixel_x < width as i32 {
-                img.put_pixel(pixel_x as u32, start_y as u32, Rgba([128, 128, 128, 255])); // Gray pixel for text
-            }
-        }
-
-        let delay = Delay::from_numer_denom_ms(300, 1); // Delay in milliseconds (adjust as needed)
-        let frame = Frame::from_parts(img, 0, 0, delay);
-        encoder.encode_frame(frame)?;
+        // Create the file name and write the PNG
+        let file_name = format!("{}/frame_{:04}.png", output_dir, t); // Zero-padded for sorting
+        let output_file = File::create(file_name)?;
+        let encoder = PngEncoder::new(output_file);
+        encoder.encode(
+            &img,
+            width,
+            height,
+            Rgba::<u8>::color_type(),
+        )?;
     }
 
     Ok(())
 }
 
-fn move_and_get_safety_score(robots: &mut Vec<Robot>, bathroom_width: i32, bathroom_height: i32, num_moves: i32) -> i32 {
-    for robot in robots.iter_mut() {
-        *robot = robot.move_robot(num_moves, bathroom_width, bathroom_height);
+fn move_and_get_safety_score(robots: &Vec<Robot>, bathroom_width: i32, bathroom_height: i32, num_moves: i32) -> i32 {
+    let mut moved_robots = Vec::new();
+    for robot in robots.iter() {
+        moved_robots.push(robot.move_robot(num_moves, bathroom_width, bathroom_height));
     }
 
-    let (q1, q2, q3, q4) = robots.iter().fold((0, 0, 0, 0), |acc, robot| {
+    let (q1, q2, q3, q4) = moved_robots.iter().fold((0, 0, 0, 0), |acc, robot| {
         match robot.determine_quadrant(bathroom_width, bathroom_height) {
             Some(1) => (acc.0 + 1, acc.1, acc.2, acc.3),
             Some(2) => (acc.0, acc.1 + 1, acc.2, acc.3),
@@ -133,6 +143,28 @@ fn move_and_get_safety_score(robots: &mut Vec<Robot>, bathroom_width: i32, bathr
 
     let safety_score = q1 * q2 * q3 * q4;
     safety_score
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        a.abs()
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+// Compute the cycle length for all robots
+fn calculate_cycle_length(robots: &[Robot], width: i32, height: i32) -> i64 {
+    robots.iter().map(|robot| {
+        // Horizontal cycle
+        let tx = width / gcd(width, robot.vel.0);
+
+        // Vertical cycle
+        let ty = height / gcd(height, robot.vel.1);
+
+        // Combine horizontal and vertical cycles for this robot
+        lcm(tx as i64, ty as i64)
+    }).fold(1, lcm)
 }
 
 #[cfg(test)]
@@ -176,7 +208,29 @@ mod tests {
 
         let safety_score = move_and_get_safety_score(&mut robots, bathroom_width, bathroom_height, num_moves);
         assert_eq!(safety_score, 12);
+        let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
+        generate_png(&robots, bathroom_width as u32, bathroom_height as u32, cycle_length as i32, "images");
 
+    }
+
+    #[test]
+    fn test_calculate_cycle_length() {
+        let robots = vec![
+            Robot { pos: (0, 0), vel: (3, -3) },
+            Robot { pos: (6, 3), vel: (-1, -3) },
+        ];
+        let bathroom_width = 101;
+        let bathroom_height = 103;
+
+        let cycle_length = calculate_cycle_length(&robots, bathroom_width, bathroom_height);
+ 
+        let robot_0 = robots[0].move_robot(cycle_length as i32, bathroom_width, bathroom_height);
+        let robot_1 = robots[1].move_robot(cycle_length as i32, bathroom_width, bathroom_height);
+        assert_eq!(robot_0.pos, robots[0].pos);
+        assert_eq!(robot_1.pos, robots[1].pos);
+        let moved_robots = vec![robot_0, robot_1];
+        assert_eq!(robots, moved_robots);
+        
     }
 
     
