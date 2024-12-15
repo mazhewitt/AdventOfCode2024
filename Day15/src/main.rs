@@ -1,10 +1,12 @@
 use std::cmp::PartialEq;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
+
+
 
 fn main() {
     let input_str = fs::read_to_string("input.txt").expect("Error reading the file");
-    let mut warehouse = Warehouse::from_str(&input_str);
+    let mut warehouse = Warehouse::from_str(&input_str, 1);
     while warehouse.move_robot() {
 
     }
@@ -20,17 +22,59 @@ enum Direction {
     Right,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Hash, Eq, Clone)]
 enum ObjectType {
     Box,
     Wall,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Object {
     object_type: ObjectType,
     position: (usize, usize),
+    width: usize,
 }
+
+impl Object {
+    fn new(object_type: ObjectType, position: (usize, usize), width: usize) -> Self {
+        Object {
+            object_type,
+            position,
+            width,
+        }
+    }
+
+    // Helper to get all occupied positions by the object
+    fn occupied_positions(&self) -> Vec<(usize, usize)> {
+        let mut positions = Vec::new();
+        for w in 0..self.width {
+            positions.push((self.position.0 + w, self.position.1));
+        }
+        positions
+    }
+
+    fn overlaps(&self, other: &Object) -> bool {
+        if self.position.1 != other.position.1 {
+            return false;
+        }
+
+        let self_start = self.position.0;
+        let self_end = self_start + self.width; 
+        let other_start = other.position.0;
+        let other_end = other_start + other.width; 
+
+        self_start < other_end && other_start < self_end
+    }
+    fn paint (&self, paper: &mut Vec<Vec<char>>) {
+        for (x, y) in self.occupied_positions() {
+            paper[y][x] = match self.object_type {
+                ObjectType::Box => 'O',
+                ObjectType::Wall => '#',
+            };
+        }
+    }
+}
+
 
 struct Robot {
     position: (usize, usize),
@@ -52,8 +96,10 @@ impl Robot {
 }
 
 struct Warehouse {
-    objects: HashMap<(usize, usize),Object>,
-    robot: Robot
+    objects: HashSet<Object>,
+    robot: Robot,
+    width_multiplier: usize,
+    size: (usize, usize),
 }
 
 
@@ -61,16 +107,18 @@ struct Warehouse {
 impl Warehouse {
     fn new() -> Warehouse {
         Warehouse {
-            objects: HashMap::new(),
+            objects: HashSet::new(),
             robot: Robot {
                 position: (0,0),
                 instructions: VecDeque::new(),
-            }
+            },
+            width_multiplier: 1,
+            size: (0,0),
         }
     }
 
     fn add_object(&mut self, object: Object) {
-        self.objects.insert(object.position, object);
+        self.objects.insert(object);
     }
 
     fn add_robot(&mut self, robot: Robot) {
@@ -78,42 +126,65 @@ impl Warehouse {
     }
 
     pub fn move_robot(&mut self) -> bool {
-        if let Some(direction) = self.robot.instructions.pop_front() {
-            let new_position = self.compute_new_position(self.robot.position, &direction);
-
-            if self.move_to(&direction, new_position) {
-                self.robot.position = new_position;
-            }
+        let direction = self.robot.instructions.pop_front();
+        if direction.is_none() {
+            return false;
+        }
+        let direction = direction.unwrap();
+        // Check if the robot can move in the given direction
+        let new_position = self.compute_new_position(self.robot.position, &direction);
+        // is there an object at the new position?
+        let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
+        if object_at_new_position.is_none() {
+            self.robot.position = new_position;
             return true;
+        }
+        else {
+            let can_move = self.can_move_object(object_at_new_position.unwrap(), &direction);
+            if can_move {
+                self.move_object(object_at_new_position.unwrap(), &direction);
+               
+                return true;
+            }
         }
         false
     }
 
-    fn move_to(&mut self, direction: &Direction, position: (usize, usize)) -> bool {
-        if let Some(object) = self.objects.get(&position) {
-            match object.object_type {
-                ObjectType::Wall => return false,
-                ObjectType::Box => {
-                    // Check if the box can be pushed
-                    let next_position = self.compute_new_position(position, direction);
-                    if !self.move_to(direction, next_position){
-                        return false;
-                    }
-                    else { // Move the box
-                        self.move_object(direction, position);}
+    fn move_object(& mut self, &object: &Object, direction: &Direction) {
+        let my_positions = object.occupied_positions();
+        for pos in my_positions {
+            let new_position = self.compute_new_position(pos, direction);
+            let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
+            if object_at_new_position.is_some() {
+                self.move_object(object_at_new_position.unwrap(), direction);
+                
+            }
+        }
+    }
+    
+    fn can_move_object(&self, object: &Object, direction: &Direction) -> HashSet<Object> {
+        //for each of my positions, check if there is an object at the new position
+        let my_positions = object.occupied_positions();
+        for pos in my_positions {
+            let new_position = self.compute_new_position(pos, direction);
+            let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
+            if object_at_new_position.is_some() {
+                // is it a wall?
+                if object_at_new_position.unwrap().object_type == ObjectType::Wall {
+                    return vec![];
+                }
+                // else add the object to the list of objects that can be moved
+                else {
+                    let mut movables = vec![object.clone()];
+                    let mut movables_from_new_position = self.can_move_object(object_at_new_position.unwrap(), direction);
+                    movables.join(movables_from_new_position);
+                    return movables;
                 }
             }
         }
-        true
+        vec![object.clone()]
     }
 
-    fn move_object(&mut self, direction: &Direction, position: (usize, usize)) {
-        if let Some(mut object) = self.objects.remove(&position) {
-            let new_position = self.compute_new_position(position, direction);
-            object.position = new_position;
-            self.objects.insert(new_position, object);
-        }
-    }
 
     fn compute_new_position(&self, position: (usize, usize), direction: &Direction) -> (usize, usize) {
         match direction {
@@ -124,7 +195,11 @@ impl Warehouse {
         }
     }
 
-    fn from_str(input: &str) -> Warehouse {
+    fn get_object_at(objects: &HashSet<Object>, position: (usize, usize)) -> Option<&Object> {
+        objects.iter().find(|obj| obj.occupied_positions().contains(&position))
+    }
+
+    fn from_str(input: &str, widith_multiplier: usize) -> Warehouse {
         let mut warehouse = Warehouse::new();
         let mut robot = Robot {
             position: (0,0),
@@ -160,23 +235,26 @@ impl Warehouse {
                         '#' => {
                             warehouse.add_object(Object {
                                 object_type: ObjectType::Wall,
-                                position: (x, y),
+                                position: (x * widith_multiplier, y),
+                                width: widith_multiplier,
                             });
                         },
                         'O' => {
                             warehouse.add_object(Object {
                                 object_type: ObjectType::Box,
-                                position: (x, y),
+                                position: (x * widith_multiplier, y),
+                                width: widith_multiplier,
                             });
                         },
                         '@' => {
-                            robot.position = (x, y);
+                            robot.position = (x * widith_multiplier, y);
                         },
                         _ => {},
                     }
                     x += 1;
                 }
                 y += 1;
+                warehouse.size = (std::cmp::max(warehouse.size.0, x), std::cmp::max(warehouse.size.1, y));
             }
         }
         warehouse.add_robot(robot);
@@ -184,49 +262,31 @@ impl Warehouse {
     }
 
     fn to_str(&self) -> String {
-        // Determine the dimensions of the warehouse
-        let max_x = self.objects.keys().map(|(x, _)| *x).max().unwrap_or(0);
-        let max_y = self.objects.keys().map(|(_, y)| *y).max().unwrap_or(0);
-        let robot_pos = self.robot.position;
-
-        let mut grid = vec![vec!['.'; max_x + 1]; max_y + 1];
-
-        // Place walls and boxes
-        for (&(x, y), object) in &self.objects {
-            grid[y][x] = match object.object_type {
-                ObjectType::Wall => '#',
-                ObjectType::Box => 'O',
-            };
+        let mut paper = vec![vec!['.'; self.size.0]; self.size.1];
+        for obj in &self.objects {
+            obj.paint(&mut paper);
         }
-
-        // Place the robot
-        grid[robot_pos.1][robot_pos.0] = '@';
-
-        // Convert the grid to a string
-        let warehouse_map = grid
-            .iter()
-            .map(|row| row.iter().collect::<String>())
-            .collect::<Vec<_>>()
-            .join("\n");
-
-
-
-        // Combine warehouse map and instructions with a blank line in between
-        format!("{warehouse_map}")
+        paper[self.robot.position.1][self.robot.position.0] = '@';
+        let mut output = String::new();
+        for row in paper {
+            output.push_str(&row.iter().collect::<String>());
+            output.push('\n');
+        }
+        output
+    }
+    
+    
+    fn calculate_gps_sum(&self) -> i32 {
+        let mut sum = 0;
+        for obj in &self.objects {
+            if obj.object_type == ObjectType::Box {
+                sum += obj.position.0 as i32 + obj.position.1 as i32;
+            }
+        }
+        sum
     }
 
-    pub fn calculate_gps_sum(&self) -> usize {
-        self.objects
-            .values()
-            .filter_map(|object| {
-                if let ObjectType::Box = object.object_type {
-                    Some(100 * object.position.1 + object.position.0)
-                } else {
-                    None
-                }
-            })
-            .sum()
-    }
+    
 }
 
 
@@ -246,10 +306,10 @@ mod tests {
 ########
 
 <^^>>>vv<v>>v<<^<";
-        let warehouse = Warehouse::from_str(warehouse_str);
+        let warehouse = Warehouse::from_str(warehouse_str, 1);
         let output_warehouse_str = warehouse.to_str();
         let output_robot_str = warehouse.robot.to_str();
-        let expected_warehouse_str = format!("{}\n\n{}", output_warehouse_str, output_robot_str);
+        let expected_warehouse_str = format!("{}\n{}", output_warehouse_str, output_robot_str);
 
         assert_eq!(warehouse_str, expected_warehouse_str);
     }
@@ -266,7 +326,7 @@ mod tests {
 ########
 
 <^^>>>vv<v>>v<<^<";
-        let mut warehouse = Warehouse::from_str(warehouse_str);
+        let mut warehouse = Warehouse::from_str(warehouse_str, 1);
         warehouse.move_robot();
         let output_warehouse_str = warehouse.to_str();
         let expected_warehouse_str = "########
@@ -304,7 +364,7 @@ mod tests {
 ########
 
 <^^>>>vv<v>>v<<";
-        let mut warehouse = Warehouse::from_str(warehouse_str);
+        let mut warehouse = Warehouse::from_str(warehouse_str, 1);
         while warehouse.move_robot() {
             println!("{}\n{}\n\n", warehouse.to_str(), warehouse.robot.to_str());
         }
@@ -333,7 +393,7 @@ mod tests {
 ########
 
 >>vv<v>>v<<";
-        let mut warehouse = Warehouse::from_str(warehouse_str);
+        let mut warehouse = Warehouse::from_str(warehouse_str, 1);
         warehouse.move_robot();
         let output_warehouse_str = warehouse.to_str();
         let expected_warehouse_str = "########
@@ -362,7 +422,7 @@ mod tests {
 #O.....OO#
 #OO....OO#
 ##########";
-        let mut warehouse = Warehouse::from_str(&input_str);
+        let mut warehouse = Warehouse::from_str(&input_str, 1);
         while warehouse.move_robot() {
             println!("{}\n{}\n\n", warehouse.to_str(), warehouse.robot.to_str());
         }
