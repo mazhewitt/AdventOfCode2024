@@ -1,3 +1,4 @@
+use std::collections;
 use pathfinding::prelude::{dijkstra};
 use std::collections::HashSet;
 
@@ -5,24 +6,22 @@ fn main() {
     let input_file = "input.txt";
     let input = std::fs::read_to_string(input_file).expect("Error reading input file");
     let (maze, start, end) = parse_maze(&input);
-    let result = find_shortest_paths(&maze, &start, end);
+    let result = find_shortest_path(&maze, &start, end);
 
     if result.is_none() {
         println!("No path found!");
         return;
     }
+    let (path, cost) = result.unwrap();
 
-    println!("Shortest path score: {}", result.unwrap().1);
+    println!("Shortest path score: {}",cost);
 
     // Part 2: Find all tiles in best paths
-    let best_path_tiles = find_tiles_in_best_paths(&maze, &start, end);
-    println!(
-        "Number of tiles in best paths: {}",
-        best_path_tiles.len()
-    );
 
-    // Optional: Display the maze with marked tiles
+    let best_path_tiles = find_tiles_in_best_paths((path, cost), &maze, &start, &end);
     display_maze_with_paths(&maze, &best_path_tiles);
+    println!("Best path tiles: {}", best_path_tiles.len());
+
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -99,22 +98,7 @@ fn successors(
     result
 }
 
-fn find_tiles_in_best_paths(
-    maze: &Vec<Vec<char>>,
-    start: &Node,
-    end: (usize, usize),
-) -> HashSet<(usize, usize)> {
-    let paths = find_shortest_paths(maze, start, end);
 
-    let mut best_path_tiles = HashSet::new();
-    if let Some((path, _)) = paths {
-        for node in path {
-            best_path_tiles.insert((node.x, node.y));
-        }
-    }
-
-    best_path_tiles
-}
 
 fn display_maze_with_paths(maze: &Vec<Vec<char>>, best_path_tiles: &HashSet<(usize, usize)>) {
     for (y, row) in maze.iter().enumerate() {
@@ -130,13 +114,51 @@ fn display_maze_with_paths(maze: &Vec<Vec<char>>, best_path_tiles: &HashSet<(usi
 }
 
 
-fn find_shortest_paths(maze: &Vec<Vec<char>>, start: &Node, end: (usize, usize)) -> Option<(Vec<Node>, usize)> {
+fn find_shortest_path(maze: &Vec<Vec<char>>, start: &Node, end: (usize, usize)) -> Option<(Vec<Node>, usize)> {
     let result = dijkstra(
         start,
         |node| successors(&maze, node),
         |node| node.x == end.0 && node.y == end.1,
     );
     result
+}
+
+fn find_tiles_in_best_paths(shortest_path: (Vec<Node>, usize), maze: &Vec<Vec<char>>, start: &Node, end: &(usize, usize)) ->  HashSet<(usize, usize)> {
+    let mut tiles = HashSet::new();
+    for node in shortest_path.0 {
+        tiles.insert((node.x, node.y));
+    }
+
+
+    for (y, row) in maze.iter().enumerate() {
+        for (x, &tile) in row.iter().enumerate() {
+            println!("Checking tile: {},{}", x, y);
+            if tile == '#' {
+                continue;
+            }
+            if tiles.contains(&(x, y)) {
+                continue;
+            }
+            if let path_from_start = find_shortest_path(&maze, &start, (x, y)).unwrap() {
+                if path_from_start.1 > shortest_path.1 {
+                    continue;
+                }
+                if let path_to_end = find_shortest_path(&maze, &path_from_start.0.last().unwrap(), *end).unwrap() {
+                    if (path_to_end.1 + path_from_start.1) == shortest_path.1 {
+                        println!("Found good tile: {},{}", x, y);
+                        for node in path_to_end.0 {
+                            tiles.insert((node.x, node.y));
+                        }
+                        for node in path_from_start.0 {
+                            tiles.insert((node.x, node.y));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    tiles
 }
 
 #[cfg(test)]
@@ -225,9 +247,12 @@ mod tests {
 
         let (maze, start, end) = parse_maze(input);
 
-        let result = find_shortest_paths(&maze, &start, end);
-        
-        assert_eq!(result.unwrap().1, 7036);
+        let result = find_shortest_path(&maze, &start, end);
+        let (path, cost) = result.unwrap();
+        assert_eq!(path[0], start);
+        let end_node = path.last().unwrap();
+        assert_eq!((end_node.x, end_node.y), end);
+        assert_eq!(cost, 7036);
     }
 
     #[test]
@@ -236,13 +261,15 @@ mod tests {
         let input = std::fs::read_to_string(input_file).expect("Error reading input file");
         let (maze, start, end) = parse_maze(&input);
 
-        let result = find_shortest_paths(&maze, &start, end);
+        let result = find_shortest_path(&maze, &start, end);
 
         assert_eq!(result.unwrap().1, 11048);
     }
 
+
+
     #[test]
-    fn test_find_tiles_in_best_paths() {
+    fn test_find_best_places_to_sit() {
         let input = r#"###############
 #.......#....E#
 #.#.###.#.###.#
@@ -258,10 +285,13 @@ mod tests {
 #.###.#.#.#.#.#
 #S..#.....#...#
 ###############"#;
-            
-            let (maze, start, end) = parse_maze(input);
-            let best_path_tiles = find_tiles_in_best_paths(&maze, &start, end);
-            assert_eq!(best_path_tiles.len(), 37);
-        }
+
+        let (maze, start, end) = parse_maze(input);
+
+        let cost = find_shortest_path(&maze, &start, end);
+        let good_seats = find_tiles_in_best_paths(cost.unwrap(), &maze, &start, &end);
+        assert_eq!(good_seats.len(), 45);
+    }
+
 
 }
