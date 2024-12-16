@@ -1,13 +1,28 @@
-use pathfinding::prelude::yen;
+use pathfinding::prelude::{dijkstra};
 use std::collections::HashSet;
 
 fn main() {
     let input_file = "input.txt";
     let input = std::fs::read_to_string(input_file).expect("Error reading input file");
     let (maze, start, end) = parse_maze(&input);
-    let num_paths = 1;
-    let result = find_shortest_paths(&maze, &start, end, num_paths);
-    println!("Shortest path: {}", result[0].1);
+    let result = find_shortest_paths(&maze, &start, end);
+
+    if result.is_none() {
+        println!("No path found!");
+        return;
+    }
+
+    println!("Shortest path score: {}", result.unwrap().1);
+
+    // Part 2: Find all tiles in best paths
+    let best_path_tiles = find_tiles_in_best_paths(&maze, &start, end);
+    println!(
+        "Number of tiles in best paths: {}",
+        best_path_tiles.len()
+    );
+
+    // Optional: Display the maze with marked tiles
+    display_maze_with_paths(&maze, &best_path_tiles);
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -84,13 +99,42 @@ fn successors(
     result
 }
 
+fn find_tiles_in_best_paths(
+    maze: &Vec<Vec<char>>,
+    start: &Node,
+    end: (usize, usize),
+) -> HashSet<(usize, usize)> {
+    let paths = find_shortest_paths(maze, start, end);
 
-fn find_shortest_paths(maze: &Vec<Vec<char>>, start: &Node, end: (usize, usize), num_paths: usize) -> Vec<(Vec<Node>, usize)> {
-    let result = yen(
+    let mut best_path_tiles = HashSet::new();
+    if let Some((path, _)) = paths {
+        for node in path {
+            best_path_tiles.insert((node.x, node.y));
+        }
+    }
+
+    best_path_tiles
+}
+
+fn display_maze_with_paths(maze: &Vec<Vec<char>>, best_path_tiles: &HashSet<(usize, usize)>) {
+    for (y, row) in maze.iter().enumerate() {
+        for (x, &tile) in row.iter().enumerate() {
+            if best_path_tiles.contains(&(x, y)) {
+                print!("O");
+            } else {
+                print!("{}", tile);
+            }
+        }
+        println!();
+    }
+}
+
+
+fn find_shortest_paths(maze: &Vec<Vec<char>>, start: &Node, end: (usize, usize)) -> Option<(Vec<Node>, usize)> {
+    let result = dijkstra(
         start,
         |node| successors(&maze, node),
         |node| node.x == end.0 && node.y == end.1,
-        num_paths,
     );
     result
 }
@@ -145,7 +189,7 @@ mod tests {
 #S..#.....#...#
 ###############"#;
             
-            let (maze, start, end) = parse_maze(input);
+            let (maze, _, _) = parse_maze(input);
             let node = Node { x: 1, y: 13, dir: 0 };
             let result = successors(&maze, &node);
             assert_eq!(result.len(), 3);
@@ -180,11 +224,10 @@ mod tests {
 ###############"#;
 
         let (maze, start, end) = parse_maze(input);
-        let num_paths = 1;
-        let result = find_shortest_paths(&maze, &start, end, num_paths);
+
+        let result = find_shortest_paths(&maze, &start, end);
         
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].1, 7036);
+        assert_eq!(result.unwrap().1, 7036);
     }
 
     #[test]
@@ -192,9 +235,33 @@ mod tests {
         let input_file = "test_input.txt";
         let input = std::fs::read_to_string(input_file).expect("Error reading input file");
         let (maze, start, end) = parse_maze(&input);
-        let num_paths = 1;
-        let result = find_shortest_paths(&maze, &start, end, num_paths);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].1, 7036);
+
+        let result = find_shortest_paths(&maze, &start, end);
+
+        assert_eq!(result.unwrap().1, 11048);
     }
+
+    #[test]
+    fn test_find_tiles_in_best_paths() {
+        let input = r#"###############
+#.......#....E#
+#.#.###.#.###.#
+#.....#.#...#.#
+#.###.#####.#.#
+#.#.#.......#.#
+#.#.#####.###.#
+#...........#.#
+###.#.#####.#.#
+#...#.....#.#.#
+#.#.#.###.#.#.#
+#.....#...#.#.#
+#.###.#.#.#.#.#
+#S..#.....#...#
+###############"#;
+            
+            let (maze, start, end) = parse_maze(input);
+            let best_path_tiles = find_tiles_in_best_paths(&maze, &start, end);
+            assert_eq!(best_path_tiles.len(), 37);
+        }
+
 }
