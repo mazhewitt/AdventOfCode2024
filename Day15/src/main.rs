@@ -1,5 +1,5 @@
 use std::cmp::PartialEq;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 
 
@@ -10,7 +10,13 @@ fn main() {
     while warehouse.move_robot() {
 
     }
-    let gps = warehouse.calculate_gps_sum();
+    let gps = warehouse.calculate_gps_sum_part1();
+    println!("GPS sum: {}", gps);
+    
+    let mut warehouse = Warehouse::from_str(&input_str, 2);
+    while warehouse.move_robot() {
+    }
+    let gps = warehouse.calculate_gps_sum_part1();
     println!("GPS sum: {}", gps);
 }
 
@@ -68,7 +74,20 @@ impl Object {
     fn paint (&self, paper: &mut Vec<Vec<char>>) {
         for (x, y) in self.occupied_positions() {
             paper[y][x] = match self.object_type {
-                ObjectType::Box => 'O',
+                ObjectType::Box => {
+                    if self.width == 1 {
+                        'O'
+                    }
+                    else {
+                        // if x,y is self.position, then it is the leftmost position
+                        if x == self.position.0 {
+                            '['
+                        }
+                        else {
+                            ']'
+                        }
+                    }
+                },
                 ObjectType::Wall => '#',
             };
         }
@@ -134,55 +153,74 @@ impl Warehouse {
         // Check if the robot can move in the given direction
         let new_position = self.compute_new_position(self.robot.position, &direction);
         // is there an object at the new position?
-        let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
+        let  object_at_new_position= Warehouse::get_object_at(&self.objects, new_position);
         if object_at_new_position.is_none() {
             self.robot.position = new_position;
             return true;
         }
+        else if object_at_new_position.unwrap().object_type == ObjectType::Wall {
+            return true;
+        }
         else {
-            let can_move = self.can_move_object(object_at_new_position.unwrap(), &direction);
-            if can_move {
-                self.move_object(object_at_new_position.unwrap(), &direction);
-               
-                return true;
+            if let Some(mut object_set) = self.get_moveable_set(object_at_new_position.unwrap(), &direction) {
+                // Convert to vec to sort
+                let mut objects_to_move: Vec<_> = object_set.into_iter().collect();
+                
+                // does the moveable set contain the a wall
+                if objects_to_move.iter().any(|obj| obj.object_type == ObjectType::Wall) {
+                    return true;
+                }
+                
+                // Sort objects based on direction
+                match direction {
+                    Direction::Right => objects_to_move.sort_by(|a, b| b.position.0.cmp(&a.position.0)),
+                    Direction::Left => objects_to_move.sort_by(|a, b| a.position.0.cmp(&b.position.0)),
+                    Direction::Down => objects_to_move.sort_by(|a, b| b.position.1.cmp(&a.position.1)),
+                    Direction::Up => objects_to_move.sort_by(|a, b| a.position.1.cmp(&b.position.1)),
+                }
+
+                // Now move them in the correct order
+                for object in objects_to_move {
+                    let new_position = self.compute_new_position(object.position, &direction);
+                    self.objects.remove(&object);
+                    self.add_object(Object::new(object.object_type, new_position, object.width));
+                }
+
+                self.robot.position = new_position;
             }
         }
-        false
+        true
     }
 
-    fn move_object(& mut self, &object: &Object, direction: &Direction) {
-        let my_positions = object.occupied_positions();
-        for pos in my_positions {
-            let new_position = self.compute_new_position(pos, direction);
-            let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
-            if object_at_new_position.is_some() {
-                self.move_object(object_at_new_position.unwrap(), direction);
-                
-            }
-        }
-    }
     
-    fn can_move_object(&self, object: &Object, direction: &Direction) -> HashSet<Object> {
+    
+    fn get_moveable_set(&self, object: &Object, direction: &Direction) -> Option<HashSet<Object>> {
+        if object.object_type == ObjectType::Wall {
+            let mut object_set =  HashSet::new();
+            object_set.insert(object.clone());
+            return Some(object_set)
+        }
+        let mut movables =  HashSet::new();
         //for each of my positions, check if there is an object at the new position
         let my_positions = object.occupied_positions();
         for pos in my_positions {
             let new_position = self.compute_new_position(pos, direction);
             let object_at_new_position = Warehouse::get_object_at(&self.objects, new_position);
             if object_at_new_position.is_some() {
-                // is it a wall?
-                if object_at_new_position.unwrap().object_type == ObjectType::Wall {
-                    return vec![];
+                if object_at_new_position.unwrap() == object {
+                    continue;
                 }
-                // else add the object to the list of objects that can be moved
-                else {
-                    let mut movables = vec![object.clone()];
-                    let mut movables_from_new_position = self.can_move_object(object_at_new_position.unwrap(), direction);
-                    movables.join(movables_from_new_position);
-                    return movables;
+               let movables_o = self.get_moveable_set(object_at_new_position.unwrap(), direction);
+                if movables_o.is_some() {
+                    movables_o.unwrap().iter().for_each(|o| {movables.insert(o.clone());});
+                }
+                else { 
+                    return None;
                 }
             }
         }
-        vec![object.clone()]
+        movables.insert(object.clone());
+        Some(movables)
     }
 
 
@@ -254,10 +292,11 @@ impl Warehouse {
                     x += 1;
                 }
                 y += 1;
-                warehouse.size = (std::cmp::max(warehouse.size.0, x), std::cmp::max(warehouse.size.1, y));
+                warehouse.size = (std::cmp::max(warehouse.size.0, x)+widith_multiplier-1, std::cmp::max(warehouse.size.1, y));
             }
         }
         warehouse.add_robot(robot);
+        warehouse.width_multiplier = widith_multiplier;
         warehouse
     }
 
@@ -276,16 +315,29 @@ impl Warehouse {
     }
     
     
-    fn calculate_gps_sum(&self) -> i32 {
+    fn calculate_gps_sum_part1(&self) -> i32 {
         let mut sum = 0;
         for obj in &self.objects {
             if obj.object_type == ObjectType::Box {
-                sum += obj.position.0 as i32 + obj.position.1 as i32;
+                sum += (obj.position.0) as i32 + (obj.position.1*100) as i32;
             }
         }
         sum
     }
-
+    fn calculate_gps_sum_part2(&self) -> i32 {
+        let mut sum = 0;
+        for obj in &self.objects {
+            if obj.object_type == ObjectType::Box {
+                // For the scaled-up boxes, the position of obj is the top-left (closest) edge of the box.
+                // Thus the GPS coordinate can be calculated the same way:
+                // GPS = 100 * (distance from top) + (distance from left)
+                // Here, position.1 is the y-coordinate (distance from top)
+                // and position.0 is the x-coordinate (distance from left).
+                sum += (obj.position.0 as i32) + (obj.position.1 as i32 * 100);
+            }
+        }
+        sum
+    }
     
 }
 
@@ -336,7 +388,8 @@ mod tests {
 #.#.O..#
 #...O..#
 #......#
-########";
+########
+";
         assert_eq!(output_warehouse_str, expected_warehouse_str);
         warehouse.move_robot();
         let output_warehouse_str = warehouse.to_str();
@@ -347,7 +400,8 @@ mod tests {
 #.#.O..#
 #...O..#
 #......#
-########";
+########
+";
         assert_eq!(output_warehouse_str, expected_warehouse_str);
     }
 
@@ -376,13 +430,14 @@ mod tests {
 #.#O@..#
 #...O..#
 #...O..#
-########";
+########
+";
         assert_eq!(output_warehouse_str, expected_warehouse_str);
 
     }
 
     #[test]
-    fn test_move_right_with_OO() {
+    fn test_move_right_with_oo() {
         let warehouse_str = "########
 #..@OO.#
 ##..O..#
@@ -403,7 +458,8 @@ mod tests {
 #.#.O..#
 #...O..#
 #......#
-########";
+########
+";
         assert_eq!(output_warehouse_str, expected_warehouse_str);
     }
 
@@ -421,14 +477,209 @@ mod tests {
 #O.....OO#
 #O.....OO#
 #OO....OO#
-##########";
+##########
+";
         let mut warehouse = Warehouse::from_str(&input_str, 1);
         while warehouse.move_robot() {
             println!("{}\n{}\n\n", warehouse.to_str(), warehouse.robot.to_str());
         }
         assert_eq!(warehouse.to_str(), output_str);
-        let gps = warehouse.calculate_gps_sum();
+        let gps = warehouse.calculate_gps_sum_part1();
         assert_eq!(gps, 10092);
     }
 
+
+    //// ------------------- Day 15 Part 2 ------------------- /////
+    
+    #[test]
+    fn test_can_expand() {
+        let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+        let warehouse = Warehouse::from_str(warehouse_str, 2);
+        let expamded = warehouse.to_str();
+        let expected = "##############
+##......##..##
+##..........##
+##....[][]@.##
+##....[]....##
+##..........##
+##############
+";
+        assert_eq!(expamded, expected);
+    }
+    #[test]
+fn test_expanded_move_2() {
+    let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+    let mut warehouse = Warehouse::from_str(warehouse_str, 2);
+    warehouse.move_robot();
+    warehouse.move_robot();
+    let expamded = warehouse.to_str();
+    let expected = "##############
+##......##..##
+##..........##
+##...[][]...##
+##....[].@..##
+##..........##
+##############
+";
+    assert_eq!(expamded, expected);
 }
+
+    #[test]
+    fn test_expanded_move_3() {
+        let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+        let mut warehouse = Warehouse::from_str(warehouse_str, 2);
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        let expamded = warehouse.to_str();
+        let expected = "##############
+##......##..##
+##..........##
+##...[][]...##
+##....[]....##
+##.......@..##
+##############
+";
+        assert_eq!(expamded, expected);
+    }
+
+    #[test]
+    fn test_expanded_move_4() {
+        let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+        let mut warehouse = Warehouse::from_str(warehouse_str, 2);
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        let expamded = warehouse.to_str();
+        let expected = "##############
+##......##..##
+##..........##
+##...[][]...##
+##....[]....##
+##......@...##
+##############
+";
+        assert_eq!(expamded, expected);
+    }
+
+    #[test]
+    fn test_expanded_move_5() {
+        let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+        let mut warehouse = Warehouse::from_str(warehouse_str, 2);
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        let expamded = warehouse.to_str();
+        let expected = "##############
+##......##..##
+##..........##
+##...[][]...##
+##....[]....##
+##.....@....##
+##############
+";
+        assert_eq!(expamded, expected);
+    }
+
+    #[test]
+    fn test_expanded_move_6() {
+        let warehouse_str = "#######
+#...#.#
+#.....#
+#..OO@#
+#..O..#
+#.....#
+#######
+
+<vv<<^^<<^^";
+        let mut warehouse = Warehouse::from_str(warehouse_str, 2);
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        warehouse.move_robot();
+        println!("{}", warehouse.to_str());
+        warehouse.move_robot();
+        println!("{}", warehouse.to_str());
+        let expamded = warehouse.to_str();
+        let expected = "##############
+##......##..##
+##...[][]...##
+##....[]....##
+##.....@....##
+##..........##
+##############
+";
+        assert_eq!(expamded, expected);
+    }
+    
+    #[test]
+    fn test_input_part2() {
+        let input_str = fs::read_to_string("test_input.txt").expect("Error reading the file");
+        let mut warehouse = Warehouse::from_str(&input_str, 2);
+        while warehouse.move_robot() {
+        }
+        
+        let expected = "####################
+##[].......[].[][]##
+##[]...........[].##
+##[]........[][][]##
+##[]......[]....[]##
+##..##......[]....##
+##..[]............##
+##..@......[].[][]##
+##......[][]..[]..##
+####################
+";
+        assert_eq!(warehouse.to_str(), expected);
+
+    }
+
+}
+
+
+
+
