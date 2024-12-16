@@ -10,13 +10,13 @@ fn main() {
     while warehouse.move_robot() {
 
     }
-    let gps = warehouse.calculate_gps_sum_part1();
+    let gps = warehouse.calculate_gps_sum_part();
     println!("GPS sum: {}", gps);
-    
+
     let mut warehouse = Warehouse::from_str(&input_str, 2);
     while warehouse.move_robot() {
     }
-    let gps = warehouse.calculate_gps_sum_part1();
+    let gps = warehouse.calculate_gps_sum_part();
     println!("GPS sum: {}", gps);
 }
 
@@ -65,9 +65,9 @@ impl Object {
         }
 
         let self_start = self.position.0;
-        let self_end = self_start + self.width; 
+        let self_end = self_start + self.width;
         let other_start = other.position.0;
-        let other_end = other_start + other.width; 
+        let other_end = other_start + other.width;
 
         self_start < other_end && other_start < self_end
     }
@@ -165,12 +165,12 @@ impl Warehouse {
             if let Some(mut object_set) = self.get_moveable_set(object_at_new_position.unwrap(), &direction) {
                 // Convert to vec to sort
                 let mut objects_to_move: Vec<_> = object_set.into_iter().collect();
-                
+
                 // does the moveable set contain the a wall
                 if objects_to_move.iter().any(|obj| obj.object_type == ObjectType::Wall) {
                     return true;
                 }
-                
+
                 // Sort objects based on direction
                 match direction {
                     Direction::Right => objects_to_move.sort_by(|a, b| b.position.0.cmp(&a.position.0)),
@@ -192,8 +192,8 @@ impl Warehouse {
         true
     }
 
-    
-    
+
+
     fn get_moveable_set(&self, object: &Object, direction: &Direction) -> Option<HashSet<Object>> {
         if object.object_type == ObjectType::Wall {
             let mut object_set =  HashSet::new();
@@ -214,7 +214,7 @@ impl Warehouse {
                 if movables_o.is_some() {
                     movables_o.unwrap().iter().for_each(|o| {movables.insert(o.clone());});
                 }
-                else { 
+                else {
                     return None;
                 }
             }
@@ -313,9 +313,9 @@ impl Warehouse {
         }
         output
     }
-    
-    
-    fn calculate_gps_sum_part1(&self) -> i32 {
+
+
+    fn calculate_gps_sum_part(&self) -> i32 {
         let mut sum = 0;
         for obj in &self.objects {
             if obj.object_type == ObjectType::Box {
@@ -324,21 +324,8 @@ impl Warehouse {
         }
         sum
     }
-    fn calculate_gps_sum_part2(&self) -> i32 {
-        let mut sum = 0;
-        for obj in &self.objects {
-            if obj.object_type == ObjectType::Box {
-                // For the scaled-up boxes, the position of obj is the top-left (closest) edge of the box.
-                // Thus the GPS coordinate can be calculated the same way:
-                // GPS = 100 * (distance from top) + (distance from left)
-                // Here, position.1 is the y-coordinate (distance from top)
-                // and position.0 is the x-coordinate (distance from left).
-                sum += (obj.position.0 as i32) + (obj.position.1 as i32 * 100);
-            }
-        }
-        sum
-    }
     
+
 }
 
 
@@ -484,13 +471,13 @@ mod tests {
             println!("{}\n{}\n\n", warehouse.to_str(), warehouse.robot.to_str());
         }
         assert_eq!(warehouse.to_str(), output_str);
-        let gps = warehouse.calculate_gps_sum_part1();
+        let gps = warehouse.calculate_gps_sum_part();
         assert_eq!(gps, 10092);
     }
 
 
     //// ------------------- Day 15 Part 2 ------------------- /////
-    
+
     #[test]
     fn test_can_expand() {
         let warehouse_str = "#######
@@ -655,14 +642,14 @@ fn test_expanded_move_2() {
 ";
         assert_eq!(expamded, expected);
     }
-    
+
     #[test]
     fn test_input_part2() {
         let input_str = fs::read_to_string("test_input.txt").expect("Error reading the file");
         let mut warehouse = Warehouse::from_str(&input_str, 2);
         while warehouse.move_robot() {
         }
-        
+
         let expected = "####################
 ##[].......[].[][]##
 ##[]...........[].##
