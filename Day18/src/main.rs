@@ -1,24 +1,20 @@
-use pathfinding::grid::Grid;
-
+use std::collections::HashSet;
+use pathfinding::prelude::{bfs, dfs};
+use glam::i32::IVec2;
 fn main() {
     let size = 70;
     let input_file = "input.txt";
     // read contents of file into a string
     let input = std::fs::read_to_string(input_file).unwrap();
-    let blocked_bytes = parse_coordinates(&input).unwrap().1;
-    let slice_use = &blocked_bytes[0..1023];
-    let grid = build_grid(size, slice_use);
-
-    let start = (0, 0);
-    let end = (70, 70);
-    let path = dfs(
-        start,
-        |&pos| grid.neighbours(pos),
-        |&pos| pos == end,
-    );
+    let blocked_bytes = build_blocked_bytes(parse_coordinates(&input).unwrap().1, 1024);
+    let start = IVec2::new(0, 0);
+    let end =  IVec2::new(70, 70);
+    let path = find_path(start, end, blocked_bytes, IVec2::new(70, 70));
     println!("Path length: {}", path.unwrap().len()-1);
 }
 
+const DIRECTIONS: [IVec2; 4] =
+    [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y];
 
 use nom::{
     character::complete::{char, digit1, newline},
@@ -27,55 +23,65 @@ use nom::{
     sequence::separated_pair,
     IResult,
 };
-use pathfinding::prelude::{bfs, dfs};
 
-fn build_grid(size: usize, blocking_bytes: &[(usize, usize)]) -> Grid {
 
-    let mut grid = Grid::new(size, size);
-    grid.fill();
-    for coordinate in blocking_bytes {
-        grid.remove_vertex(*coordinate);
-    }
-    grid
-}
+
 
 fn find_path(
-    grid: &Grid,
-    start: (usize, usize),
-    end: (usize, usize),
-) -> Option<Vec<(usize, usize)>> {
-    dfs(
-        start,
-        |&pos| grid.neighbours(pos),
+    start: IVec2,
+    end: IVec2,
+    blocked_bytes: HashSet<IVec2>,
+    bounds: IVec2,
+) -> Option<Vec<IVec2>> {
+    bfs(
+        &start,
+        |&pos| {
+            DIRECTIONS
+                .iter()
+                .filter_map(|dir| {
+                    let next_pos = pos + *dir;
+                    if (0..=bounds.x).contains(&next_pos.x)
+                        && (0..=bounds.y).contains(&next_pos.y)
+                        && !blocked_bytes.contains(&next_pos)
+                    {
+                        Some(next_pos)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        },
         |&pos| pos == end,
     )
 }
 
 /// Parse a single coordinate `(x, y)`
-fn parse_coordinate(input: &str) -> IResult<&str, (usize, usize)> {
+fn parse_coordinate(input: &str) -> IResult<&str, (i32, i32)> {
     separated_pair(
-        map_res(digit1, |s: &str| s.parse::<usize>()), // Parse `x`
+        map_res(digit1, |s: &str| s.parse::<i32>()), // Parse `x`
         char(','),                                    // Separator
-        map_res(digit1, |s: &str| s.parse::<usize>()), // Parse `y`
+        map_res(digit1, |s: &str| s.parse::<i32>()), // Parse `y`
     )(input)
 }
 
 /// Parse the full input into a list of `(x, y)` coordinates
-fn parse_coordinates(input: &str) -> IResult<&str, Vec<(usize, usize)>> {
+fn parse_coordinates(input: &str) -> IResult<&str, Vec<(i32, i32)>> {
     separated_list1(newline, parse_coordinate)(input)
 }
 
-
-fn successors(pos: (usize, usize), grid: &Grid) -> Vec<(usize, usize)> {
-    grid.neighbours(pos)
-        .into_iter()
+fn build_blocked_bytes(vec: Vec<(i32, i32)>, num_bytes: usize) -> HashSet<IVec2> {
+    vec[0..num_bytes]
+        .iter()
+        .map(|&(x, y)| IVec2::new(x, y))
         .collect()
 }
 
+
+
+
 #[cfg(test)]
 mod tests {
-    use pathfinding::prelude::bfs;
-    use super::*;
+   use super::*;
 
     #[test]
     fn test_parse_single_coordinate() {
@@ -101,39 +107,30 @@ mod tests {
     }
 
     #[test]
-    fn test_build_grid(){
+    fn test_build_corrupted(){
         let size = 7;
         let input_file = "test_input.txt";
         // read contents of file into a string
         let input = std::fs::read_to_string(input_file).unwrap();
         let coordinates = parse_coordinates(&input).unwrap().1;
-        let grid = build_grid(size, &coordinates);
-        assert_eq!(grid.size(), (size*size));
+        let blocked_bytes = build_blocked_bytes(coordinates, 12);
+        assert_eq!(blocked_bytes.len(), 12);
     }
+
+
+
     #[test]
     fn test_find_path() {
         let size = 7;
         let input_file = "test_input.txt";
         // read contents of file into a string
         let input = std::fs::read_to_string(input_file).unwrap();
-        let blocked_bytes = parse_coordinates(&input).unwrap().1;
-        let slice_use = &blocked_bytes[0..11];
-        let grid = build_grid(size, slice_use);
-        println!("{:?}", grid);
-        let start = (0, 0);
-        let end = (6, 6);
-        let path = find_path(&grid, start, end);
-        assert_eq!(path.unwrap().len()-1 , 22)
-
+        let blocked_bytes = build_blocked_bytes(parse_coordinates(&input).unwrap().1, 12);
+        let start = IVec2::new(0, 0);
+        let end =  IVec2::new(6, 6);
+        let path = find_path(start, end, blocked_bytes, IVec2::new(6, 6));
+        assert_eq!(path.unwrap().len()-1, 22);
     }
 
-    #[test]
-    fn test_find_neighbours(){
-        let size = 7;
 
-        let blocked_bytes = vec![(1,1), (1,2)];
-        let grid = build_grid(size, &blocked_bytes);
-        let neighbours = grid.neighbours((2,2));
-        assert_eq!(neighbours.len(), 3);
-    }
 }
