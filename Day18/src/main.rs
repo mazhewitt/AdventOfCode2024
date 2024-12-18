@@ -1,17 +1,21 @@
 use pathfinding::grid::Grid;
 
 fn main() {
-    let size = 71;
+    let size = 70;
     let input_file = "input.txt";
     // read contents of file into a string
     let input = std::fs::read_to_string(input_file).unwrap();
     let blocked_bytes = parse_coordinates(&input).unwrap().1;
-    let slice_use = &blocked_bytes[0..1024];
+    let slice_use = &blocked_bytes[0..1023];
     let grid = build_grid(size, slice_use);
 
     let start = (0, 0);
     let end = (70, 70);
-    let path = find_path(&grid, start, end);
+    let path = dfs(
+        start,
+        |&pos| grid.neighbours(pos),
+        |&pos| pos == end,
+    );
     println!("Path length: {}", path.unwrap().len()-1);
 }
 
@@ -113,9 +117,9 @@ mod tests {
         // read contents of file into a string
         let input = std::fs::read_to_string(input_file).unwrap();
         let blocked_bytes = parse_coordinates(&input).unwrap().1;
-        let slice_use = &blocked_bytes[0..12];
+        let slice_use = &blocked_bytes[0..11];
         let grid = build_grid(size, slice_use);
-
+        println!("{:?}", grid);
         let start = (0, 0);
         let end = (6, 6);
         let path = find_path(&grid, start, end);
