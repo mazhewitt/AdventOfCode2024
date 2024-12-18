@@ -1,7 +1,9 @@
 use std::collections::HashSet;
-use pathfinding::prelude::{bfs, dfs};
+use std::time::Instant;
+use pathfinding::prelude::{astar, bfs, dfs};
 use glam::i32::IVec2;
 fn main() {
+    let start_time = Instant::now(); // Start the timer
     let size = 70;
     let input_file = "input.txt";
     // read contents of file into a string
@@ -11,13 +13,15 @@ fn main() {
     let start = IVec2::new(0, 0);
     let end =  IVec2::new(70, 70);
     let path = find_path(start, end, &blocked_bytes, IVec2::new(70, 70));
-    println!("Path length: {}", path.unwrap().len()-1);
+    println!("Path length: {}", path.unwrap().1);
 
     if let Some(blocking_byte) = find_first_blocking_byte(&all_bytes, &start, &end, size) {
         println!("{},{}", blocking_byte.x, blocking_byte.y);
     } else {
         println!("No blocking byte found within the given input.");
     }
+    let duration = start_time.elapsed(); // Calculate elapsed time
+    println!("Time taken: {:.2?}", duration);
 }
 
 const DIRECTIONS: [IVec2; 4] =
@@ -60,33 +64,45 @@ fn find_first_blocking_byte(
 
 
 
+fn neighbors(
+    current: IVec2,
+    bounds: IVec2,
+    blocked_bytes: &HashSet<IVec2>,
+) -> impl Iterator<Item = (IVec2, i32)> + '_ {
+    DIRECTIONS
+        .iter()
+        .map(move |&dir| current + dir)
+        .filter(move |&neighbor| {
+            neighbor.x >= 0 && neighbor.x <= bounds.x
+                && neighbor.y >= 0 && neighbor.y <= bounds.y
+                && !blocked_bytes.contains(&neighbor)
+        })
+        .map(move |neighbor| (neighbor, 1))
+}
+
 fn find_path(
     start: IVec2,
     end: IVec2,
     blocked_bytes: &HashSet<IVec2>,
     bounds: IVec2,
-) -> Option<Vec<IVec2>> {
-    bfs(
+) -> Option<(Vec<IVec2>, i32)> {
+    astar(
         &start,
-        |&pos| {
-            DIRECTIONS
-                .iter()
-                .filter_map(|dir| {
-                    let next_pos = pos + *dir;
-                    if (0..=bounds.x).contains(&next_pos.x)
-                        && (0..=bounds.y).contains(&next_pos.y)
-                        && !blocked_bytes.contains(&next_pos)
-                    {
-                        Some(next_pos)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
+        move |current| neighbors(*current, bounds, blocked_bytes),
+        |current| {
+            let diff = end - *current;
+            diff.x.abs() + diff.y.abs() // Manhattan distance heuristic
         },
-        |&pos| pos == end,
+        |current| *current == end,
     )
 }
+
+
+
+fn is_valid_position(p: IVec2, bounds: IVec2, blocked_bytes: &HashSet<IVec2>) -> bool {
+    p.x >= 0 && p.x <= bounds.x && p.y >= 0 && p.y <= bounds.y && !blocked_bytes.contains(&p)
+}
+
 
 /// Parse a single coordinate `(x, y)`
 fn parse_coordinate(input: &str) -> IResult<&str, (i32, i32)> {
@@ -161,8 +177,8 @@ mod tests {
         let blocked_bytes = build_blocked_bytes(parse_coordinates(&input).unwrap().1, 12);
         let start = IVec2::new(0, 0);
         let end =  IVec2::new(6, 6);
-        let path = find_path(start, end, blocked_bytes, IVec2::new(6, 6));
-        assert_eq!(path.unwrap().len()-1, 22);
+        let path = find_path(start, end, &blocked_bytes, IVec2::new(6, 6));
+        assert_eq!(path.unwrap().1, 22);
     }
 
 
