@@ -6,11 +6,18 @@ fn main() {
     let input_file = "input.txt";
     // read contents of file into a string
     let input = std::fs::read_to_string(input_file).unwrap();
-    let blocked_bytes = build_blocked_bytes(parse_coordinates(&input).unwrap().1, 1024);
+    let all_bytes = parse_coordinates(&input).unwrap().1;
+    let blocked_bytes = build_blocked_bytes(all_bytes.clone(), 1024);
     let start = IVec2::new(0, 0);
     let end =  IVec2::new(70, 70);
-    let path = find_path(start, end, blocked_bytes, IVec2::new(70, 70));
+    let path = find_path(start, end, &blocked_bytes, IVec2::new(70, 70));
     println!("Path length: {}", path.unwrap().len()-1);
+
+    if let Some(blocking_byte) = find_first_blocking_byte(&all_bytes, &start, &end, size) {
+        println!("{},{}", blocking_byte.x, blocking_byte.y);
+    } else {
+        println!("No blocking byte found within the given input.");
+    }
 }
 
 const DIRECTIONS: [IVec2; 4] =
@@ -24,13 +31,39 @@ use nom::{
     IResult,
 };
 
+fn find_first_blocking_byte(
+    all_bytes: &Vec<(i32, i32)>,
+    start: &IVec2,
+    end: &IVec2,
+    size: i32,
+) -> Option<IVec2> {
+    let mut left = 1;
+    let mut right = all_bytes.len();
+    let mut result = None;
+
+    while left <= right {
+        let mid = left + (right - left) / 2;
+        let blocked_bytes = build_blocked_bytes(all_bytes.clone(), mid);
+
+        if find_path(*start, *end, &blocked_bytes, IVec2::new(size, size)).is_none() {
+            // Path is blocked, search in the lower half
+            result = Some(all_bytes[mid - 1].into());
+            right = mid - 1;
+        } else {
+            // Path exists, search in the upper half
+            left = mid + 1;
+        }
+    }
+
+    result
+}
 
 
 
 fn find_path(
     start: IVec2,
     end: IVec2,
-    blocked_bytes: HashSet<IVec2>,
+    blocked_bytes: &HashSet<IVec2>,
     bounds: IVec2,
 ) -> Option<Vec<IVec2>> {
     bfs(
