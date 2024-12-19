@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::time::Instant;
 
 fn main() {
-
+    let start_time = Instant::now(); // Start the timer
     let filename = "input.txt";
     let (towel_patterns, designs) = load_input(filename);
     let results = can_make_designs(&towel_patterns, &designs);
@@ -12,23 +13,21 @@ fn main() {
     
     let num_ways = num_ways_to_make_designs(&towel_patterns, &designs);
     println!("Number of ways to make the designs: {}", num_ways);
+    let duration = start_time.elapsed(); // Calculate elapsed time
+    println!("Time taken: {:.2?}", duration);
 }
 
 fn load_input(p0: &str) -> (Vec<String>, Vec<String>) {
-    // Open the file and create a buffered reader
     let file = File::open(p0).expect("file not found");
     let reader = BufReader::new(file);
 
-    // Read all lines into a vector
     let lines: Vec<String> = reader.lines().map(|line| line.unwrap()).collect();
 
-    // Extract towel patterns from the first line
     let towel_patterns: Vec<String> = lines[0]
         .split(',')
         .map(|x| x.trim().to_string())
         .collect();
 
-    // Extract designs from the remaining lines after skipping the empty line
     let designs: Vec<String> = lines.into_iter().skip(2).collect();
 
     (towel_patterns, designs)
