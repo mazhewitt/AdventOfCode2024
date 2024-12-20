@@ -195,4 +195,6 @@ mod tests {
         assert_eq!(computer.output, vec![0, 1, 2]);
     }
 
+
+
 }

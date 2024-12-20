@@ -1,0 +1,8 @@
+[package]
+name = "Day20"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glam = "0.29.2"
+pathfinding = "4.12.0"
