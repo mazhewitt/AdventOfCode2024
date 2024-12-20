@@ -53,8 +53,17 @@ impl Computer {
         self.ip += 2;
     }
 
+    fn un_adv(&mut self, operand: u8) {
+        self.register_a = self.register_a << self.get_combo_value(operand);
+        self.ip += 2;
+    }
+
     fn bxl(&mut self, operand: u8) {
         self.register_b ^= operand as usize;
+        self.ip += 2;
+    }
+    fn un_bxl(&mut self, operand: u8) {
+        self.register_b ^= self.get_combo_value(operand);
         self.ip += 2;
     }
 
@@ -104,5 +113,29 @@ fn main() {
         .collect::<Vec<_>>()
         .join(",");
 
-    println!("{}", output);
+    println!("Part 1 {}", output);
+
+    // Part 2
+
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_part1() {
+        let initial_a = 729;
+        let initial_b = 0;
+        let initial_c = 0;
+        let program = vec![0, 1, 5, 4, 3, 0];
+        let mut computer = Computer::new(initial_a, initial_b, initial_c, program);
+        computer.run();
+        let output = computer.output.iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        assert_eq!(output, "4,6,3,5,6,3,5,2,1,0");
+    }
 }
