@@ -137,7 +137,7 @@ fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &Has
         if visited.contains(&current) {
             continue;
         }
-        visited.insert(&current);
+        visited.insert(current.clone());
         if current.distance_from_start > start_to_end {
             continue;
         }
