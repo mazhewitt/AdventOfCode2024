@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use glam::IVec2;
 use pathfinding::prelude::astar;
@@ -88,13 +88,131 @@ fn shortest_path(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &HashSe
     Some(path)
 }
 
+fn distances_walls_to_end(grid: &Vec<Vec<char>>, end: IVec2, walls: &HashSet<IVec2>) -> HashMap<IVec2, i32> {
+
+
+    // calculate the distance to the start form all the walls and store in a hashmap
+    let mut wall_distances_to_end = HashMap::new();
+    for wall in walls.iter() {
+        let mut use_walls = walls.clone();
+        use_walls.remove(wall);
+        let distance = shortest_path(&grid, end, *wall, &use_walls);
+        if distance.is_some() {
+            wall_distances_to_end.insert(*wall, distance.unwrap());
+        }
+
+    }
+    wall_distances_to_end
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+struct RaceTrackNode {
+    position: IVec2,
+    distance_from_start: i32,
+    remaining_cheats: i32,
+    cheat_start: Option<IVec2>,
+}
+
+fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &HashSet<IVec2>) -> HashMap<i32, i32> {
+    let start_to_end = shortest_path(&grid, start, end, &walls).expect("No path found from start to end");
+    //BFS from the start to the end
+    let mut queue = VecDeque::new();
+    let mut visited = HashSet::new();
+    queue.push_back(RaceTrackNode {
+        position: start,
+        distance_from_start: 0,
+        remaining_cheats: 2,
+        cheat_start: Option::None,
+    });
+    let mut cheat_map = HashMap::new();
+    while let Some(current) = queue.pop_front() {
+        if current.position == end {
+            if current.distance_from_start < start_to_end && current.cheat_start.is_some() {
+                let saving = start_to_end - current.distance_from_start;
+                cheat_map.insert(current.cheat_start, saving);
+            }
+            continue;
+        }
+
+        if visited.contains(&current) {
+            continue;
+        }
+        visited.insert(&current);
+        if current.distance_from_start > start_to_end {
+            continue;
+        }
+        // add the neighbors
+        for &dir in DIRECTIONS.iter() {
+            let next_position = current.position + dir;
+            if next_position.x >= 0 && next_position.x < grid[0].len() as i32
+                && next_position.y >= 0 && next_position.y < grid.len() as i32 {
+                if walls.contains(&next_position) {
+                    // if we have a cheat
+                    if current.remaining_cheats > 1 {
+                        // push a new node with the cheat active
+                        if current.cheat_start.is_none() {
+                            let new_node = RaceTrackNode {
+                                position: next_position,
+                                distance_from_start: current.distance_from_start + 1,
+                                remaining_cheats: current.remaining_cheats - 1,
+                                cheat_start: Some(current.position),
+                            };
+                            queue.push_back(new_node);
+                        }
+                        else {
+                            let new_node = RaceTrackNode {
+                                position: next_position,
+                                distance_from_start: current.distance_from_start + 1,
+                                remaining_cheats: current.remaining_cheats - 1,
+                                cheat_start: current.cheat_start,
+                            };
+                            queue.push_back(new_node);
+                        }
+                    }
+                    continue
+                }
+                if current.cheat_start.is_some() {
+                    // if we have a cheat
+                    if current.remaining_cheats > 0 {
+                        let new_node = RaceTrackNode {
+                            position: next_position,
+                            distance_from_start: current.distance_from_start + 1,
+                            cheat_start: current.cheat_start,
+                            remaining_cheats: current.remaining_cheats - 1,
+                        };
+                        queue.push_back(new_node);
+                    } else {
+                        let new_node = RaceTrackNode {
+                            position: next_position,
+                            distance_from_start: current.distance_from_start + 1,
+                            cheat_start: current.cheat_start,
+                            remaining_cheats: 0,
+                        };
+                        queue.push_back(new_node);
+                    }
+                } else {
+                    let new_node = RaceTrackNode {
+                        position: next_position,
+                        distance_from_start: current.distance_from_start + 1,
+                        cheat_start: current.cheat_start,
+                        remaining_cheats: current.remaining_cheats,
+                    };
+                    queue.push_back(new_node);
+                }
+            }
+        }
+    }
+    // count the number of cheats for each saving
+    let mut savings_map = HashMap::new();
+    for (_, saving) in cheat_map.iter() {
+        let count = savings_map.entry(*saving).or_insert(0);
+        *count += 1;
+    }
+    savings_map
+}
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
-    use std::error::Error;
-    use glam::IVec2;
-    use pathfinding::prelude::astar;
     use super::*;
 
     #[test]
@@ -123,42 +241,35 @@ mod tests {
         assert_eq!(path.unwrap(), 84);
     }
 
+
+    #[test]
+    fn test_small_example() {
+        let grid_chars = r"##########
+#.S......#
+########.#
+#........#
+#E.......#
+##########
+";
+        let grid = grid_chars.lines().map(|l| l.chars().collect()).collect();
+        let (start, end, walls) = find_start_end(&grid);
+        let path = shortest_path(&grid, start, end, &walls);
+        assert_eq!(path.unwrap(), 16);
+        let savings_map = calculate_cheats(&grid, start, end, &walls);
+        println!("{:?}", savings_map);
+
+    }
+
     #[test]
     fn test_distance_with_cheats() {
         let grid = load_grid("test_input.txt");
         let (start, end, walls) = find_start_end(&grid);
-        let start_to_end = shortest_path(&grid, start, end, &walls).expect("No path found from start to end");
+        let savings_map = calculate_cheats(&grid, start, end, &walls);
 
-        //HashMap to collect cheats
-        let mut cheats = Vec::new();
-        let mut removed_walls = HashSet::new();
-
-        // for each wall, calculate the distance from start to wall and wall to end
-        // for each wall
-        for wall in &walls{
-            let mut cheat_walls = walls.clone();
-            cheat_walls.remove(wall);
-            let distance_from_wall_to_start = shortest_path(&grid, start, *wall, &cheat_walls);
-            if distance_from_wall_to_start.is_none() || removed_walls.contains(wall) {
-                continue;
-            }
-            // for each neighbour
-            for direction in DIRECTIONS.iter() {
-                let neighbour = *wall + *direction;
-                if neighbour.x > 0 && neighbour.x < grid[0].len() as i32 && neighbour.y > 0 && neighbour.y < grid.len() as i32{
-                    let mut cheat_walls2 = cheat_walls.clone();
-                    cheat_walls2.remove(&neighbour);
-                    let distance_from_neighbour_to_end = shortest_path(&grid, end, neighbour, &cheat_walls2);
-                    if (distance_from_wall_to_start.unwrap() + distance_from_neighbour_to_end.unwrap()) < start_to_end {
-                        cheats.push( start_to_end - (distance_from_wall_to_start.unwrap() + distance_from_neighbour_to_end.unwrap()));
-                        removed_walls.insert(*wall);
-                        removed_walls.insert(neighbour);
-                    }
-                }
-            }
-        }
-        assert_eq!(cheats.len(), 2);
+        println!("{:?}", savings_map);
     }
+
+
 
     #[test]
     fn test_single_cheat_position() {
@@ -185,21 +296,6 @@ mod tests {
 
     }
 
-    fn distances_walls_to_start(grid: &Vec<Vec<char>>, start: IVec2, walls: &HashSet<IVec2>) -> HashMap<IVec2, i32> {
 
-
-        // calculate the distance to the start form all the walls and store in a hashmap
-        let mut wall_distances_to_start = HashMap::new();
-        for wall in walls.iter() {
-            let mut use_walls = walls.clone();
-            use_walls.remove(wall);
-            let distance = shortest_path(&grid, start, *wall, &use_walls);
-            if distance.is_some() {
-                wall_distances_to_start.insert(*wall, distance.unwrap());
-            }
-
-        }
-        wall_distances_to_start
-    }
 }
 
