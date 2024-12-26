@@ -1,10 +1,27 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::error::Error;
 use glam::IVec2;
-use pathfinding::prelude::astar;
 
-fn main() {
-    println!("Hello, world!");
+/// Four cardinal directions: up, right, down, left
+const DIRECTIONS: [IVec2; 4] = [IVec2::Y, IVec2::X, IVec2::NEG_Y, IVec2::NEG_X];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum CheatState {
+    NotUsed,
+    InUse(u8, IVec2),
+    UsedUp(IVec2, IVec2),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct BfsNode {
+    position: IVec2,
+    cheat_state: CheatState,
+}
+
+#[derive(Debug)]
+struct CheatRecord {
+    cheat_start: IVec2,
+    cheat_end: IVec2,
+    distance: i32,
 }
 
 fn load_grid(filename: &str) -> Vec<Vec<char>> {
@@ -20,44 +37,39 @@ fn load_grid(filename: &str) -> Vec<Vec<char>> {
     grid
 }
 
-const DIRECTIONS: [IVec2; 4] =
-    [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y];
-
-fn neighbors(
-    current: IVec2,
-    bounds: IVec2,
-    blocked_bytes: &HashSet<IVec2>,
-) -> impl Iterator<Item=(IVec2, i32)> + '_ {
-    DIRECTIONS
-        .iter()
-        .map(move |&dir| current + dir)
-        .filter(move |&neighbor| {
-            neighbor.x >= 0 && neighbor.x <= bounds.x
-                && neighbor.y >= 0 && neighbor.y <= bounds.y
-                && !blocked_bytes.contains(&neighbor)
-        })
-        .map(move |neighbor| (neighbor, 1))
-}
-
-fn find_path(
+/// Returns the BFS distance from `start` to `end` *without cheating*,
+/// or None if no path exists.
+fn shortest_path_no_cheat(
+    grid: &[Vec<char>],
     start: IVec2,
     end: IVec2,
     walls: &HashSet<IVec2>,
-    bounds: IVec2,
-) -> Option<(Vec<IVec2>, i32)> {
-    astar(
-        &start,
-        move |current| neighbors(*current, bounds, walls),
-        |current| {
-            let diff = end - *current;
-            diff.x.abs() + diff.y.abs() // Manhattan distance heuristic
-        },
-        |current| *current == end,
-    )
-}
+) -> Option<i32> {
+    let bounds = IVec2::new(grid[0].len() as i32, grid.len() as i32);
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back((start, 0));
+    visited.insert(start);
 
-fn is_valid_position(p: IVec2, bounds: IVec2, blocked_bytes: &HashSet<IVec2>) -> bool {
-    p.x >= 0 && p.x <= bounds.x && p.y >= 0 && p.y <= bounds.y && !blocked_bytes.contains(&p)
+    while let Some((pos, dist)) = queue.pop_front() {
+        if pos == end {
+            return Some(dist);
+        }
+        for &dir in DIRECTIONS.iter() {
+            let next = pos + dir;
+            if next.x >= 0
+                && next.y >= 0
+                && next.x < bounds.x
+                && next.y < bounds.y
+                && !walls.contains(&next)
+                && !visited.contains(&next)
+            {
+                visited.insert(next);
+                queue.push_back((next, dist + 1));
+            }
+        }
+    }
+    None
 }
 
 fn find_start_end(grid: &Vec<Vec<char>>) -> (IVec2, IVec2, HashSet<IVec2>) {
@@ -78,144 +90,199 @@ fn find_start_end(grid: &Vec<Vec<char>>) -> (IVec2, IVec2, HashSet<IVec2>) {
     (start, end, walls)
 }
 
-fn shortest_path(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &HashSet<IVec2>) -> Option<i32> {
-    // use A* algorithm from pathfinding to find the shortest path
-    let mut path = 0;
+/// Perform a BFS that accounts for one 2-step cheat window.
+/// Returns a map from (cheat_start, cheat_end) -> best distance achieving that cheat.
+/// (If you just need to count how many saves >= 100, you can reduce or adapt.)
+fn bfs_with_cheat(
+    grid: &[Vec<char>],
+    start: IVec2,
+    end: IVec2,
+    walls: &HashSet<IVec2>,
+    base_distance: i32, // the non-cheating distance for S->E
+) -> HashMap<(IVec2, IVec2), i32> {
     let bounds = IVec2::new(grid[0].len() as i32, grid.len() as i32);
-    if let Some((p, cost)) = find_path(start, end, walls, bounds) {
-        path = cost;
-    }
-    Some(path)
-}
 
-fn distances_walls_to_end(grid: &Vec<Vec<char>>, end: IVec2, walls: &HashSet<IVec2>) -> HashMap<IVec2, i32> {
+    // For each (position, cheat_state), store the *minimum* distance
+    // we've seen so far. If we come back at a bigger/equal distance, skip.
+    let mut visited = HashMap::<BfsNode, i32>::new();
 
+    // We'll record finishing cheats in this map: (start, end) -> best distance
+    let mut cheat_results = HashMap::<(IVec2, IVec2), i32>::new();
 
-    // calculate the distance to the start form all the walls and store in a hashmap
-    let mut wall_distances_to_end = HashMap::new();
-    for wall in walls.iter() {
-        let mut use_walls = walls.clone();
-        use_walls.remove(wall);
-        let distance = shortest_path(&grid, end, *wall, &use_walls);
-        if distance.is_some() {
-            wall_distances_to_end.insert(*wall, distance.unwrap());
-        }
-
-    }
-    wall_distances_to_end
-}
-
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
-struct RaceTrackNode {
-    position: IVec2,
-    distance_from_start: i32,
-    remaining_cheats: i32,
-    cheat_start: Option<IVec2>,
-}
-
-fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &HashSet<IVec2>) -> HashMap<i32, i32> {
-    let start_to_end = shortest_path(&grid, start, end, &walls).expect("No path found from start to end");
-    //BFS from the start to the end
-    let mut queue = VecDeque::new();
-    let mut visited = HashSet::new();
-    queue.push_back(RaceTrackNode {
+    // Initial BFS state: at start, cheat not used, distance=0
+    let init_state = BfsNode {
         position: start,
-        distance_from_start: 0,
-        remaining_cheats: 2,
-        cheat_start: Option::None,
-    });
-    let mut cheat_map = HashMap::new();
-    while let Some(current) = queue.pop_front() {
-        if current.distance_from_start > start_to_end {
+        cheat_state: CheatState::NotUsed,
+    };
+    visited.insert(init_state, 0);
+
+    let mut queue = VecDeque::new();
+    queue.push_back((init_state, 0)); // (BfsNode, distance)
+
+    while let Some((node, dist)) = queue.pop_front() {
+        let BfsNode {
+            position: pos,
+            cheat_state,
+        } = node;
+
+        if dist >= base_distance {
+            // We can't possibly find a shorter path than the base distance
             continue;
         }
-        if current.position == end {
-            if current.distance_from_start < start_to_end && current.cheat_start.is_some() {
-                let saving = start_to_end - current.distance_from_start;
-                // if the cheat is longer than the current saving, update the saving
-                let saving = std::cmp::max(saving, *cheat_map.get(&current.cheat_start.unwrap()).unwrap_or(&0));
-                cheat_map.insert(current.cheat_start.unwrap(), saving);
-                println!("found a cheat at {:?} with saving {}", current.cheat_start, saving);
+
+        // If we've reached E, we can see if we ended in some cheat state
+        // that has a distinct start-end pair. The puzzle only cares
+        // if we used a cheat that actually saved time.
+        if pos == end {
+            match cheat_state {
+                // We either never cheated or we ended the cheat:
+                CheatState::UsedUp(cs, ce) => {
+                    // Save the distance under that (start, end) pair:
+                    let entry = cheat_results.entry((cs, ce)).or_insert(dist);
+                    if dist < *entry {
+                        *entry = dist;
+                    }
+                }
+                // If we ended exactly on track with only 1 cheat step used, that’s also a valid cheat,
+                // so you might consider bridging that scenario. But to keep it simpler,
+                // we assume we forced the cheat to end if we used it at all.
+                _ => {
+                    // Possibly we never cheated, or we ended in InUse with leftover steps —
+                    // then that’s not a valid “finished cheat,” or it’s no cheat at all.
+                }
             }
             continue;
         }
 
-        if visited.contains(&current) {
-            continue;
-        }
-        visited.insert(current.clone());
-
-        // add the neighbors
+        // Explore neighbors
         for &dir in DIRECTIONS.iter() {
-            let next_position = current.position + dir;
-            if next_position.x >= 0 && next_position.x < grid[0].len() as i32
-                && next_position.y >= 0 && next_position.y < grid.len() as i32 {
-                if walls.contains(&next_position) {
-                    // if we have a cheat and can pass the next wall
-                    if current.remaining_cheats > 1 {
-                        // push a new node with the cheat active
-                        if current.cheat_start.is_none() {
-                            let new_node = RaceTrackNode {
-                                position: next_position,
-                                distance_from_start: current.distance_from_start + 1,
-                                remaining_cheats: current.remaining_cheats - 1,
-                                cheat_start: Some(current.position),
-                            };
-                            queue.push_back(new_node);
-                        }
-                        else {
-                            let new_node = RaceTrackNode {
-                                position: next_position,
-                                distance_from_start: current.distance_from_start + 1,
-                                remaining_cheats: current.remaining_cheats - 1,
-                                cheat_start: current.cheat_start,
-                            };
-                            queue.push_back(new_node);
-                        }
-                    }
-                    continue
-                }
-                if current.cheat_start.is_some() {
-                    // if we have a cheat
-                    if current.remaining_cheats > 0 {
-                        let new_node = RaceTrackNode {
-                            position: next_position,
-                            distance_from_start: current.distance_from_start + 1,
-                            cheat_start: current.cheat_start,
-                            remaining_cheats: current.remaining_cheats - 1,
-                        };
-                        queue.push_back(new_node);
+            let next_pos = pos + dir;
+            // Skip out-of-bounds
+            if next_pos.x < 0
+                || next_pos.y < 0
+                || next_pos.x >= bounds.x
+                || next_pos.y >= bounds.y
+            {
+                continue;
+            }
+
+            let next_is_wall = walls.contains(&next_pos);
+
+            // We’ll produce the next cheat state + distance (always dist+1):
+            let (next_state, next_dist) = match cheat_state {
+                //------------------------------------------------------
+                // 1) We haven't used the cheat yet (NotUsed)
+                //------------------------------------------------------
+                CheatState::NotUsed => {
+                    if next_is_wall {
+                        // We can start the cheat IF we step through 1 wall
+                        // cheat now "in use," with 1 more cheat step left after this one
+                        let next_cs = CheatState::InUse(1, pos);
+                        (next_cs, dist + 1)
                     } else {
-                        let new_node = RaceTrackNode {
-                            position: next_position,
-                            distance_from_start: current.distance_from_start + 1,
-                            cheat_start: current.cheat_start,
-                            remaining_cheats: 0,
-                        };
-                        queue.push_back(new_node);
+                        // Normal move on track, still not using cheat
+                        (CheatState::NotUsed, dist + 1)
                     }
-                } else {
-                    let new_node = RaceTrackNode {
-                        position: next_position,
-                        distance_from_start: current.distance_from_start + 1,
-                        cheat_start: current.cheat_start,
-                        remaining_cheats: current.remaining_cheats,
-                    };
-                    queue.push_back(new_node);
+                }
+
+                //------------------------------------------------------
+                // 2) Currently using the cheat: InUse(steps_left, cheat_start)
+                //------------------------------------------------------
+                CheatState::InUse(steps_left, cheat_start) => {
+                    if next_is_wall {
+                        // If we want to keep going through a second wall:
+                        if steps_left == 1 {
+                            continue;
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        if steps_left == 1 {
+                            let next_cs = CheatState::UsedUp(cheat_start, pos);
+                            (next_cs, dist + 1)
+                        } else {
+                            (CheatState::InUse(2, cheat_start), dist + 1)
+                        }
+                    }
+                }
+
+                //------------------------------------------------------
+                // 3) We have used up our cheat: UsedUp(cheat_start, cheat_end)
+                //------------------------------------------------------
+                CheatState::UsedUp(cs, ce) => {
+                    // We can no longer go through walls
+                    if next_is_wall {
+                        // No move
+                        continue;
+                    } else {
+                        // Move on track
+                        (CheatState::UsedUp(cs, ce), dist + 1)
+                    }
+                }
+            };
+
+            // If we haven't visited (next_pos, next_state) or we found a shorter path, enqueue
+            let next_node = BfsNode {
+                position: next_pos,
+                cheat_state: next_state,
+            };
+            if let Some(&best_dist_so_far) = visited.get(&next_node) {
+                // We have seen this state before
+                if best_dist_so_far <= next_dist {
+                    // We have already a better or equal distance for that state, skip
+                    continue;
                 }
             }
+            visited.insert(next_node, next_dist);
+            queue.push_back((next_node, next_dist));
         }
     }
-    println!("cheat map {:?}", cheat_map);
-    // count the number of cheats for each saving
-    let mut savings_map = HashMap::new();
-    for (_, saving) in cheat_map.iter() {
-        let count = savings_map.entry(*saving).or_insert(0);
-        *count += 1;
-    }
-    savings_map
+
+    // Now `cheat_results` has (start, end) -> best distance if cheat was used
+    // We'll return them so you can group by saving = base_distance - best_distance
+    cheat_results
 }
 
+fn get_savings_count_with_cheats(grid: &Vec<Vec<char>>) -> HashMap<i32, i32> {
+    let (start, end, walls) = find_start_end(&grid);
+    // 1) Find base distance with no cheating
+    let base_distance = shortest_path_no_cheat(&grid, start, end, &walls)
+        .expect("No path found from S to E without cheating!");
+
+    // 2) BFS that accounts for 2-step cheat once
+    let cheat_results_map = bfs_with_cheat(&grid, start, end, &walls, base_distance);
+
+    // 3) Convert to “savings” map: saving => how many distinct (start, end) yield that saving?
+    let mut savings_count: HashMap<i32, i32> = HashMap::new();
+    for ((cheat_start, cheat_end), dist) in cheat_results_map.iter() {
+        let save = base_distance - dist;
+        // Filter out cases that don’t actually save time (<=0).
+        if save > 0 {
+            *savings_count.entry(save).or_insert(0) += 1;
+        }
+    }
+
+    // 4) Finally, how many cheats save at least 100 picoseconds?
+    let big_savers: i32 = savings_count
+        .iter()
+        .filter_map(|(save, count)| {
+            if *save >= 100 {
+                Some(*count)
+            } else {
+                None
+            }
+        })
+        .sum();
+    savings_count
+}
+
+fn main() {
+    let grid = load_grid("input.txt");
+    let savings_map = get_savings_count_with_cheats(&grid);
+    let big_savers = savings_map.iter().filter(|(save, _)| **save >= 100).count();
+    println!("Savings map: {savings_map:?}");
+    println!("Cheats saving >=100 picoseconds = {big_savers}");
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,65 +309,38 @@ mod tests {
     fn test_shortest_path() {
         let grid = load_grid("test_input.txt");
         let (start, end, walls) = find_start_end(&grid);
-        let path = shortest_path(&grid, start, end, &walls);
+        let path = shortest_path_no_cheat(&grid, start, end, &walls);
         assert_eq!(path.unwrap(), 84);
-    }
-
-
-    #[test]
-    fn test_small_example() {
-        let grid_chars = r"##########
-#.S......#
-########.#
-#........#
-#E.......#
-##########
-";
-        let grid = grid_chars.lines().map(|l| l.chars().collect()).collect();
-        let (start, end, walls) = find_start_end(&grid);
-        let path = shortest_path(&grid, start, end, &walls);
-        assert_eq!(path.unwrap(), 16);
-        let savings_map = calculate_cheats(&grid, start, end, &walls);
-        println!("{:?}", savings_map);
-
     }
 
     #[test]
     fn test_distance_with_cheats() {
         let grid = load_grid("test_input.txt");
-        let (start, end, walls) = find_start_end(&grid);
-        let savings_map = calculate_cheats(&grid, start, end, &walls);
 
-        println!("{:?}", savings_map);
-    }
-
-
-
-    #[test]
-    fn test_single_cheat_position() {
-        let grid = load_grid("test_input.txt");
-        let (start, end, walls) = find_start_end(&grid);
-
-        let chosen_wall = IVec2::new(8, 1);
-        let mut cheat_walls = walls.clone();
-        cheat_walls.remove(&chosen_wall);
-
-        let cheat_path_length = shortest_path(&grid, start, end, &cheat_walls)
-            .expect("No path found with cheat");
-        assert_eq!(cheat_path_length, 72);
-
-        let mut cheat_walls = walls.clone();
-        cheat_walls.remove(&chosen_wall);
-
-
-        let distance_from_chosen_wall_to_start = shortest_path(&grid, start, chosen_wall, &cheat_walls)
-            .expect("No path found from chosen wall to start");
-        let distance_from_chosen_wall_to_end = shortest_path(&grid, end, chosen_wall, &cheat_walls)
-            .expect("No path found from chosen wall to end");
-        assert_eq!(distance_from_chosen_wall_to_start + distance_from_chosen_wall_to_end, 72);
-
+        let savings_count = get_savings_count_with_cheats(&grid);
+        //There are 14 cheats that save 2 picoseconds.
+        assert_eq!(savings_count.get(&2).unwrap(), &14);
+        // There are 14 cheats that save 4 picoseconds.
+        assert_eq!(savings_count.get(&4).unwrap(), &14);
+        // There are 2 cheats that save 6 picoseconds.
+        assert_eq!(savings_count.get(&6).unwrap(), &2);
+        // There are 4 cheats that save 8 picoseconds.
+        assert_eq!(savings_count.get(&8).unwrap(), &4);
+        // There are 2 cheats that save 10 picoseconds.
+        assert_eq!(savings_count.get(&10).unwrap(), &2);
+        // There are 3 cheats that save 12 picoseconds.
+        assert_eq!(savings_count.get(&12).unwrap(), &3);
+        // There is one cheat that saves 20 picoseconds.
+        assert_eq!(savings_count.get(&20).unwrap(), &1);
+        // There is one cheat that saves 36 picoseconds.
+        assert_eq!(savings_count.get(&36).unwrap(), &1);
+        // There is one cheat that saves 38 picoseconds.
+        assert_eq!(savings_count.get(&38).unwrap(), &1);
+        // There is one cheat that saves 40 picoseconds.
+        assert_eq!(savings_count.get(&40).unwrap(), &1);
+        // There is one cheat that saves 64 picoseconds.
+        assert_eq!(savings_count.get(&64).unwrap(), &1);
     }
 
 
 }
-
