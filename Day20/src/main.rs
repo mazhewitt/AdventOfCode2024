@@ -126,10 +126,16 @@ fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &Has
     });
     let mut cheat_map = HashMap::new();
     while let Some(current) = queue.pop_front() {
+        if current.distance_from_start > start_to_end {
+            continue;
+        }
         if current.position == end {
             if current.distance_from_start < start_to_end && current.cheat_start.is_some() {
                 let saving = start_to_end - current.distance_from_start;
-                cheat_map.insert(current.cheat_start, saving);
+                // if the cheat is longer than the current saving, update the saving
+                let saving = std::cmp::max(saving, *cheat_map.get(&current.cheat_start.unwrap()).unwrap_or(&0));
+                cheat_map.insert(current.cheat_start.unwrap(), saving);
+                println!("found a cheat at {:?} with saving {}", current.cheat_start, saving);
             }
             continue;
         }
@@ -138,16 +144,14 @@ fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &Has
             continue;
         }
         visited.insert(current.clone());
-        if current.distance_from_start > start_to_end {
-            continue;
-        }
+
         // add the neighbors
         for &dir in DIRECTIONS.iter() {
             let next_position = current.position + dir;
             if next_position.x >= 0 && next_position.x < grid[0].len() as i32
                 && next_position.y >= 0 && next_position.y < grid.len() as i32 {
                 if walls.contains(&next_position) {
-                    // if we have a cheat
+                    // if we have a cheat and can pass the next wall
                     if current.remaining_cheats > 1 {
                         // push a new node with the cheat active
                         if current.cheat_start.is_none() {
@@ -202,6 +206,7 @@ fn calculate_cheats(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &Has
             }
         }
     }
+    println!("cheat map {:?}", cheat_map);
     // count the number of cheats for each saving
     let mut savings_map = HashMap::new();
     for (_, saving) in cheat_map.iter() {
