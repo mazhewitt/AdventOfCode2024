@@ -167,6 +167,7 @@ fn bfs_with_cheat(
                         }
                     }
                 }
+                continue;
             }
             // we made it to the end without cheating, or ended during the cheat
             _ => {
@@ -303,7 +304,16 @@ fn get_savings_count_with_cheats(grid: &Vec<Vec<char>>) -> HashMap<i32, i32> {
 fn main() {
     let grid = load_grid("input.txt");
     let savings_map = get_savings_count_with_cheats(&grid);
-    let big_savers = savings_map.iter().filter(|(save, _)| **save >= 100).count();
+    let big_savers: i32 = savings_map
+        .iter()
+        .filter_map(|(save, count)| {
+            if *save >= 100 {
+                Some(*count)
+            } else {
+                None
+            }
+        })
+        .sum();
     println!("Savings map: {savings_map:?}");
     println!("Cheats saving >=100 picoseconds = {big_savers}");
 }
@@ -364,6 +374,19 @@ mod tests {
         assert_eq!(savings_count.get(&40).unwrap(), &1);
         // There is one cheat that saves 64 picoseconds.
         assert_eq!(savings_count.get(&64).unwrap(), &1);
+
+        println!("Savings map: {savings_count:?}");
+        let big_savers: i32 = savings_count
+            .iter()
+            .filter_map(|(save, count)| {
+                if *save >= 1 {
+                    Some(*count)
+                } else {
+                    None
+                }
+            })
+            .sum();
+        println!("Cheats saving >=100 picoseconds = {big_savers}");
     }
 
 
