@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use glam::IVec2;
+use pathfinding::prelude::astar;
 
 /// Four cardinal directions: up, right, down, left
 const DIRECTIONS: [IVec2; 4] = [IVec2::Y, IVec2::X, IVec2::NEG_Y, IVec2::NEG_X];
@@ -37,39 +38,43 @@ fn load_grid(filename: &str) -> Vec<Vec<char>> {
     grid
 }
 
-/// Returns the BFS distance from `start` to `end` *without cheating*,
-/// or None if no path exists.
-fn shortest_path_no_cheat(
-    grid: &[Vec<char>],
+
+
+fn neighbors(
+    current: IVec2,
+    bounds: IVec2,
+    blocked_bytes: &HashSet<IVec2>,
+) -> impl Iterator<Item=(IVec2, i32)> + '_ {
+    DIRECTIONS
+        .iter()
+        .map(move |&dir| current + dir)
+        .filter(move |&neighbor| {
+            neighbor.x >= 0 && neighbor.x <= bounds.x
+                && neighbor.y >= 0 && neighbor.y <= bounds.y
+                && !blocked_bytes.contains(&neighbor)
+        })
+        .map(move |neighbor| (neighbor, 1))
+}
+
+fn find_path(
     start: IVec2,
     end: IVec2,
     walls: &HashSet<IVec2>,
-) -> Option<i32> {
-    let bounds = IVec2::new(grid[0].len() as i32, grid.len() as i32);
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back((start, 0));
-    visited.insert(start);
+    bounds: IVec2,
+) -> Option<(Vec<IVec2>, i32)> {
+    astar(
+        &start,
+        move |current| neighbors(*current, bounds, walls),
+        |current| {
+            let diff = end - *current;
+            diff.x.abs() + diff.y.abs() // Manhattan distance heuristic
+        },
+        |current| *current == end,
+    )
+}
 
-    while let Some((pos, dist)) = queue.pop_front() {
-        if pos == end {
-            return Some(dist);
-        }
-        for &dir in DIRECTIONS.iter() {
-            let next = pos + dir;
-            if next.x >= 0
-                && next.y >= 0
-                && next.x < bounds.x
-                && next.y < bounds.y
-                && !walls.contains(&next)
-                && !visited.contains(&next)
-            {
-                visited.insert(next);
-                queue.push_back((next, dist + 1));
-            }
-        }
-    }
-    None
+fn is_valid_position(p: IVec2, bounds: IVec2, blocked_bytes: &HashSet<IVec2>) -> bool {
+    p.x >= 0 && p.x <= bounds.x && p.y >= 0 && p.y <= bounds.y && !blocked_bytes.contains(&p)
 }
 
 fn find_start_end(grid: &Vec<Vec<char>>) -> (IVec2, IVec2, HashSet<IVec2>) {
@@ -89,6 +94,17 @@ fn find_start_end(grid: &Vec<Vec<char>>) -> (IVec2, IVec2, HashSet<IVec2>) {
     }
     (start, end, walls)
 }
+
+fn shortest_path_no_cheat(grid: &Vec<Vec<char>>, start: IVec2, end: IVec2, walls: &HashSet<IVec2>) -> Option<i32> {
+    // use A* algorithm from pathfinding to find the shortest path
+    let mut path = 0;
+    let bounds = IVec2::new(grid[0].len() as i32, grid.len() as i32);
+    if let Some((p, cost)) = find_path(start, end, walls, bounds) {
+        path = cost;
+    }
+    Some(path)
+}
+
 
 /// Perform a BFS that accounts for one 2-step cheat window.
 /// Returns a map from (cheat_start, cheat_end) -> best distance achieving that cheat.
@@ -133,26 +149,34 @@ fn bfs_with_cheat(
         // If we've reached E, we can see if we ended in some cheat state
         // that has a distinct start-end pair. The puzzle only cares
         // if we used a cheat that actually saved time.
-        if pos == end {
-            match cheat_state {
-                // We either never cheated or we ended the cheat:
-                CheatState::UsedUp(cs, ce) => {
-                    // Save the distance under that (start, end) pair:
-                    let entry = cheat_results.entry((cs, ce)).or_insert(dist);
-                    if dist < *entry {
-                        *entry = dist;
+
+        match cheat_state {
+            // We either never cheated or we ended the cheat:
+            CheatState::UsedUp(cs, ce) => {
+                // how far to the end
+                let path_to_end = find_path(pos, end, walls, bounds);
+                if let Some((_, dist_to_end)) = path_to_end {
+                    let total_dist = dist + dist_to_end;
+
+                    if let Some((_, dist_to_end)) = path_to_end {
+                        let total_dist = dist + dist_to_end;
+
+                        let entry = cheat_results.entry((cs, ce)).or_insert(total_dist);
+                        if total_dist < *entry {
+                            *entry = total_dist;
+                        }
                     }
                 }
-                // If we ended exactly on track with only 1 cheat step used, that’s also a valid cheat,
-                // so you might consider bridging that scenario. But to keep it simpler,
-                // we assume we forced the cheat to end if we used it at all.
-                _ => {
-                    // Possibly we never cheated, or we ended in InUse with leftover steps —
-                    // then that’s not a valid “finished cheat,” or it’s no cheat at all.
+            }
+            // we made it to the end without cheating, or ended during the cheat
+            _ => {
+                if pos == end {
+                    continue;
                 }
             }
-            continue;
         }
+
+
 
         // Explore neighbors
         for &dir in DIRECTIONS.iter() {
