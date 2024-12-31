@@ -129,10 +129,9 @@ fn dp_build_all_sequences(
     current_char: char,
     memo: &mut HashMap<(usize, char), Vec<Vec<char>>>,
 ) -> Vec<Vec<char>> {
-    // If we've typed everything, there's no more path to generate
+
     if current_index == input_sequence.len() {
         return vec![vec![]];
-        // Return a single "empty path" so that callers can do .extend() properly
     }
 
     // Check cache
@@ -140,18 +139,11 @@ fn dp_build_all_sequences(
         return cached.clone();
     }
 
-    // Next char we want to type
     let target_char = input_sequence[current_index];
-
-    // All possible shortest single-hop paths from current_char -> target_char
-    // e.g. [ ['<','A'], ['^','A'] ] etc.
     let single_hop_paths = keypad.shortest_path(current_char, target_char);
 
-    // We'll accumulate all possible expansions
     let mut all_paths = vec![];
 
-    // For each single-hop path to move from current_char -> target_char,
-    // then recursively build all paths from target_char onward.
     for single_hop in single_hop_paths {
         let tails = dp_build_all_sequences(
             keypad,
@@ -174,10 +166,6 @@ fn dp_build_all_sequences(
     all_paths
 }
 
-///
-/// Convenience wrapper: build all sequences to type `input`,
-/// assuming we start from the keypad's 'A' button.
-///
 fn build_all_sequences(keypad: &mut Keypad, input: &str) -> Vec<Vec<char>> {
     let input_chars: Vec<char> = input.chars().collect();
     let mut memo: HashMap<(usize, char), Vec<Vec<char>>> = HashMap::new();
