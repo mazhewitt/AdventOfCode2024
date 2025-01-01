@@ -3,8 +3,15 @@ fn main() {
     let contents = std::fs::read_to_string(input_file).unwrap();
     let codes: Vec<&str> = contents.lines().collect();
     let mut total_checksum = 0;
-    for code in codes {
-        let shortest_path = get_shortest_path_three_robots(code);
+    for code in &codes {
+        let shortest_path = get_shortest_path_n_robots(code, 2);
+        let checksum = calculate_checksum(code, shortest_path);
+        total_checksum += checksum;
+    }
+    println!("Total checksum: {}", total_checksum);
+    let mut total_checksum_p2 = 0;
+    for code in &codes {
+        let shortest_path = get_shortest_path_n_robots(code, 25);
         let checksum = calculate_checksum(code, shortest_path);
         total_checksum += checksum;
     }
@@ -52,7 +59,7 @@ impl Keypad {
         y < self.layout.len() && x < self.layout[y].len() && self.layout[y][x] != ' '
     }
 
-    pub(crate) fn shortest_path(&mut self, start: char, end: char) -> Vec<Vec<char>> {
+    fn shortest_path(&mut self, start: char, end: char) -> Vec<Vec<char>> {
         if start == end {
             return vec![vec!['A']];
         }
@@ -107,8 +114,6 @@ impl Keypad {
         self.shortest_paths.insert((start, end), paths.clone());
         paths
     }
-
-
 
 }
 
@@ -172,7 +177,7 @@ fn build_all_sequences(keypad: &mut Keypad, input: &str) -> Vec<Vec<char>> {
     dp_build_all_sequences(keypad, &input_chars, 0, 'A', &mut memo)
 }
 
-fn get_shortest_path_three_robots(code: &str) -> Vec<char> {
+fn get_shortest_path_n_robots(code: &str, num_directional_robots:u8) -> Vec<char> {
     let layout1 = vec![
         vec!['7', '8', '9'],
         vec!['4', '5', '6'],
@@ -190,25 +195,31 @@ fn get_shortest_path_three_robots(code: &str) -> Vec<char> {
 
     let first_results = build_all_sequences(&mut numeric_keypad, code);
 
-    let mut second_results = vec![];
 
-    for path in &first_results {
-        let sequences = build_all_sequences(&mut directional_keypad, &path.iter().collect::<String>());
-        for sequence in sequences {
-            second_results.push(sequence);
-        }
-    }
+    let mut results = shortest_paths_robot(&mut directional_keypad, &first_results, num_directional_robots);
 
-    let mut third_results = vec![];
-    for path in &second_results {
-        let sequences = build_all_sequences(&mut directional_keypad, &path.iter().collect::<String>());
-        for sequence in sequences {
-            third_results.push(sequence);
-        }
-    }
-
-    let shortest_path = third_results.iter().min_by_key(|x| x.len()).unwrap();
+    let shortest_path = results.iter().min_by_key(|x| x.len()).unwrap();
     shortest_path.clone()
+}
+
+fn shortest_paths_robot(
+    directional_keypad: &mut Keypad,
+    sequences: &Vec<Vec<char>>,
+    remaining_robots: u8,
+) -> Vec<Vec<char>> {
+    if remaining_robots == 0 {
+        return sequences.clone();
+    }
+    let mut next_sequences = Vec::new();
+
+    for path in sequences {
+        let path_str: String = path.iter().collect();
+        let new_sequences = build_all_sequences(directional_keypad, &path_str);
+        next_sequences.extend(new_sequences);
+    }
+
+    // Recurse with one fewer robot
+    shortest_paths_robot(directional_keypad, &next_sequences, remaining_robots - 1)
 }
 
 fn calculate_checksum(code: &str, shortest_path: Vec<char>) -> usize {
@@ -309,14 +320,14 @@ mod tests {
     #[test]
     fn test_three_robots(){
         let code = "029A";
-        let shortest_path = get_shortest_path_three_robots(code);
+        let shortest_path = get_shortest_path_n_robots(code, 2);
         assert_eq!(shortest_path.len(), 68);
     }
 
     #[test]
     fn test_checksum() {
         let code = "029A";
-        let shortest_path = get_shortest_path_three_robots(code);
+        let shortest_path = get_shortest_path_n_robots(code, 2);
         // numeric part of code as usize
         let checksum = calculate_checksum(code, shortest_path);
         assert_eq!(checksum, 68*29);
@@ -355,7 +366,7 @@ mod tests {
         let codes: Vec<&str> = contents.lines().collect();
         let mut total_checksum = 0;
         for code in codes {
-            let shortest_path = get_shortest_path_three_robots(code);
+            let shortest_path = get_shortest_path_n_robots(code, 2);
             let checksum = calculate_checksum(code, shortest_path);
             total_checksum += checksum;
         }
