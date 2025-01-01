@@ -1,0 +1,8 @@
+[package]
+name = "Day22"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+itertools = "0.14.0"
+rayon = "1.10.0"
