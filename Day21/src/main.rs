@@ -211,13 +211,7 @@ fn compute_length(
             .chars()
             .zip(seq.iter())
             .map(|(x, y)| {
-                // Retrieve all shortest paths from x to y
-                let paths = directional_keypad.shortest_path(x, *y);
-                if paths.is_empty() {
-                    0
-                } else {
-                    paths[0].len()
-                }
+                directional_keypad.shortest_path(x, *y)[0].len()
             })
             .sum()
     } else {
@@ -228,7 +222,6 @@ fn compute_length(
             let candidates = directional_keypad.shortest_path(x, *y);
             let mut best = usize::MAX;
             for subseq in candidates {
-                // Recurse with depth-1
                 let cost = compute_length(&subseq, depth - 1, directional_keypad, memo);
                 if cost < best {
                     best = cost;
@@ -237,7 +230,7 @@ fn compute_length(
             if best < usize::MAX {
                 total += best;
             } else {
-                total += 0; // Or set to a sentinel value if appropriate
+                total += 0;
             }
         }
         total
