@@ -13,11 +13,10 @@ fn main() {
     for code in &codes {
         let shortest_path = get_shortest_path_n_robots(code, 25);
         let checksum = calculate_checksum(code, shortest_path);
-        total_checksum += checksum;
+        total_checksum_p2 += checksum;
     }
-    println!("Total checksum: {}", total_checksum);
+    println!("Total checksum: {}", total_checksum_p2);
 }
-
 
 use std::collections::HashMap;
 
@@ -29,8 +28,6 @@ struct Keypad {
     space_coord: (usize, usize),
 }
 
-
-
 impl Keypad {
     fn new(layout: Vec<Vec<char>>) -> Self {
         let mut positions = HashMap::new();
@@ -39,8 +36,7 @@ impl Keypad {
             for (c, &button) in row.iter().enumerate() {
                 if button != ' ' {
                     positions.insert(button, (r, c));
-                }
-                else {
+                } else {
                     i_space_coord = (r, c);
                 }
             }
@@ -53,7 +49,6 @@ impl Keypad {
             space_coord: i_space_coord,
         }
     }
-
 
     fn is_valid(&self, x: usize, y: usize) -> bool {
         y < self.layout.len() && x < self.layout[y].len() && self.layout[y][x] != ' '
@@ -75,8 +70,10 @@ impl Keypad {
 
         let horizontal_distance = start_pos.1 as isize - end_pos.1 as isize; //negative for left, positive for right
         let vertical_distance = start_pos.0 as isize - end_pos.0 as isize; //negative for up, positive for down
-        //can we go horizontal first?
-        if !pass_though_space_h_first(self.space_coord, start_pos, end_pos) && horizontal_distance != 0 {
+                                                                           //can we go horizontal first?
+        if !pass_though_space_h_first(self.space_coord, start_pos, end_pos)
+            && horizontal_distance != 0
+        {
             let mut path = vec![];
 
             let move_char = if horizontal_distance < 0 { '>' } else { '<' };
@@ -94,7 +91,9 @@ impl Keypad {
             paths.push(path);
         }
         //can we go vertical first?
-        if !pass_though_space_v_first(self.space_coord, start_pos, end_pos) && vertical_distance != 0 {
+        if !pass_though_space_v_first(self.space_coord, start_pos, end_pos)
+            && vertical_distance != 0
+        {
             let mut path = vec![];
 
             let move_char = if vertical_distance < 0 { 'v' } else { '^' };
@@ -114,70 +113,27 @@ impl Keypad {
         self.shortest_paths.insert((start, end), paths.clone());
         paths
     }
-
 }
 
-fn pass_though_space_v_first(space_coord: (usize, usize), start_pos: &(usize, usize), end_pos: &(usize, usize)) -> bool {
+fn pass_though_space_v_first(
+    space_coord: (usize, usize),
+    start_pos: &(usize, usize),
+    end_pos: &(usize, usize),
+) -> bool {
     let pass_through_space = start_pos.1 == space_coord.1 && end_pos.0 == space_coord.0;
     pass_through_space
 }
 
-fn pass_though_space_h_first(space_coord: (usize, usize), start_pos: &(usize, usize), end_pos: &(usize, usize)) -> bool {
+fn pass_though_space_h_first(
+    space_coord: (usize, usize),
+    start_pos: &(usize, usize),
+    end_pos: &(usize, usize),
+) -> bool {
     let pass_through_space = end_pos.1 == space_coord.1 && start_pos.0 == space_coord.0;
     pass_through_space
 }
 
-fn dp_build_all_sequences(
-    keypad: &mut Keypad,
-    input_sequence: &[char],
-    current_index: usize,
-    current_char: char,
-    memo: &mut HashMap<(usize, char), Vec<Vec<char>>>,
-) -> Vec<Vec<char>> {
-
-    if current_index == input_sequence.len() {
-        return vec![vec![]];
-    }
-
-    // Check cache
-    if let Some(cached) = memo.get(&(current_index, current_char)) {
-        return cached.clone();
-    }
-
-    let target_char = input_sequence[current_index];
-    let single_hop_paths = keypad.shortest_path(current_char, target_char);
-
-    let mut all_paths = vec![];
-
-    for single_hop in single_hop_paths {
-        let tails = dp_build_all_sequences(
-            keypad,
-            input_sequence,
-            current_index + 1,
-            target_char,
-            memo,
-        );
-
-        // For each possible continuation tail, combine it with this single-hop
-        for mut tail in tails {
-            let mut combined = single_hop.clone();
-            combined.append(&mut tail);
-            all_paths.push(combined);
-        }
-    }
-
-    // Store in memo and return
-    memo.insert((current_index, current_char), all_paths.clone());
-    all_paths
-}
-
-fn build_all_sequences(keypad: &mut Keypad, input: &str) -> Vec<Vec<char>> {
-    let input_chars: Vec<char> = input.chars().collect();
-    let mut memo: HashMap<(usize, char), Vec<Vec<char>>> = HashMap::new();
-    dp_build_all_sequences(keypad, &input_chars, 0, 'A', &mut memo)
-}
-
-fn get_shortest_path_n_robots(code: &str, num_directional_robots:u8) -> Vec<char> {
+fn get_shortest_path_n_robots(code: &str, num_directional_robots: u8) -> usize {
     let layout1 = vec![
         vec!['7', '8', '9'],
         vec!['4', '5', '6'],
@@ -186,45 +142,120 @@ fn get_shortest_path_n_robots(code: &str, num_directional_robots:u8) -> Vec<char
     ];
     let mut numeric_keypad = Keypad::new(layout1);
 
-
-    let layout2 = vec![
-        vec![' ', '^', 'A'],
-        vec!['<', 'v', '>'],
-    ];
+    let layout2 = vec![vec![' ', '^', 'A'], vec!['<', 'v', '>']];
     let mut directional_keypad = Keypad::new(layout2);
 
-    let first_results = build_all_sequences(&mut numeric_keypad, code);
-
-
-    let mut results = shortest_paths_robot(&mut directional_keypad, &first_results, num_directional_robots);
-
-    let shortest_path = results.iter().min_by_key(|x| x.len()).unwrap();
-    shortest_path.clone()
+    let paths = get_shortest_paths(code, &mut numeric_keypad);
+    let mut memo = HashMap::new();
+    paths.iter()
+        .map(|seq| compute_length(&seq, num_directional_robots as usize, &mut directional_keypad, &mut memo))
+        .min()
+        .unwrap_or(0)
 }
 
-fn shortest_paths_robot(
+fn get_shortest_paths(input_str: &str, keypad: &mut Keypad) -> Vec<Vec<char>> {
+    let mut pairs = Vec::new();
+    let full_str = format!("A{}", input_str);
+    for (x, y) in full_str.chars().zip(input_str.chars()) {
+        let possible_moves = keypad.shortest_path(x, y);
+        if !possible_moves.is_empty() {
+            pairs.push(possible_moves.clone());
+        } else {
+            // Handle cases where there's no path by pushing an empty vector
+            pairs.push(vec![]);
+        }
+    }
+
+    // Initialize `results` with a single empty vector to start the Cartesian product
+    let mut results: Vec<Vec<char>> = vec![vec![]];
+
+    for options in pairs {
+        let mut temp = Vec::new();
+        for prefix in &results {
+            for option in &options {
+                let mut new_prefix = prefix.clone();
+                new_prefix.extend(option.iter());
+                temp.push(new_prefix);
+            }
+        }
+        results = temp;
+    }
+
+    results
+}
+
+/// Recursively compute how many button presses are needed to reproduce a certain sequence
+/// on the directional keypad chain, up to a certain depth.
+///
+/// - If depth == 1, we sum the length of the direct (char->char) moves for the entire sequence.
+/// - Otherwise, for each pair (x, y), we look up all possible sub-sequences in dir_seqs
+///   and take the minimal computed length (recursive call).
+fn compute_length(
+    seq: &Vec<char>,
+    depth: usize,
     directional_keypad: &mut Keypad,
-    sequences: &Vec<Vec<char>>,
-    remaining_robots: u8,
-) -> Vec<Vec<char>> {
-    if remaining_robots == 0 {
-        return sequences.clone();
-    }
-    let mut next_sequences = Vec::new();
+    memo: &mut HashMap<(String, usize), usize>,
+) -> usize {
+    // Convert seq to String for efficient hashing
+    let seq_string: String = seq.iter().collect();
 
-    for path in sequences {
-        let path_str: String = path.iter().collect();
-        let new_sequences = build_all_sequences(directional_keypad, &path_str);
-        next_sequences.extend(new_sequences);
+    // Check our memoization cache
+    if let Some(&cached) = memo.get(&(seq_string.clone(), depth)) {
+        return cached;
     }
 
-    // Recurse with one fewer robot
-    shortest_paths_robot(directional_keypad, &next_sequences, remaining_robots - 1)
+    let result = if depth == 1 {
+        // Base Case: Sum the lengths of the direct shortest paths for the entire sequence
+        let full_seq = format!("A{}", seq_string);
+        full_seq
+            .chars()
+            .zip(seq.iter())
+            .map(|(x, y)| {
+                // Retrieve all shortest paths from x to y
+                let paths = directional_keypad.shortest_path(x, *y);
+                if paths.is_empty() {
+                    0
+                } else {
+                    paths[0].len()
+                }
+            })
+            .sum()
+    } else {
+        // Recursive Case: Consider all possible sub-sequences and choose the minimal cost
+        let full_seq = format!("A{}", seq_string);
+        let mut total = 0;
+        for (x, y) in full_seq.chars().zip(seq.iter()) {
+            let candidates = directional_keypad.shortest_path(x, *y);
+            let mut best = usize::MAX;
+            for subseq in candidates {
+                // Recurse with depth-1
+                let cost = compute_length(&subseq, depth - 1, directional_keypad, memo);
+                if cost < best {
+                    best = cost;
+                }
+            }
+            if best < usize::MAX {
+                total += best;
+            } else {
+                total += 0; // Or set to a sentinel value if appropriate
+            }
+        }
+        total
+    };
+
+    memo.insert((seq_string, depth), result);
+
+    result
 }
 
-fn calculate_checksum(code: &str, shortest_path: Vec<char>) -> usize {
-    let numeric_part: usize = code.chars().take_while(|c| c.is_numeric()).collect::<String>().parse().unwrap();
-    let checksum = shortest_path.len() * numeric_part;
+fn calculate_checksum(code: &str, shortest_path: usize) -> usize {
+    let numeric_part: usize = code
+        .chars()
+        .take_while(|c| c.is_numeric())
+        .collect::<String>()
+        .parse()
+        .unwrap();
+    let checksum = shortest_path * numeric_part;
     checksum
 }
 
@@ -248,6 +279,31 @@ mod tests {
         assert_eq!(keypad.is_valid(0, 2), false);
         assert_eq!(keypad.is_valid(3, 0), false);
     }
+
+    #[test]
+    fn test_dp_build_all_sequences_for_029a_first_robot() {
+
+        let layout = vec![
+            vec!['7', '8', '9'],
+            vec!['4', '5', '6'],
+            vec!['1', '2', '3'],
+            vec![' ', '0', 'A'],
+        ];
+        let mut keypad = Keypad::new(layout);
+        let code = "029A";
+        let results = get_shortest_paths(code, &mut keypad);
+        let expected_paths: Vec<Vec<char>> = vec![
+            "<A^A>^^AvvvA".chars().collect(),
+            "<A^A^^>AvvvA".chars().collect(),
+        ];
+        for path in &expected_paths {
+            assert!(
+                results.contains(path),
+                "Missing expected path: {:?}",
+                path
+            );
+        }
+    }
     #[test]
     fn test_double_paths() {
         let layout = vec![
@@ -259,7 +315,10 @@ mod tests {
 
         let start = '4';
         let end = '3';
-        assert_eq!(keypad.shortest_path(start, end), vec![vec!['>', '>', '^', 'A'], vec!['^', '>', '>', 'A']]);
+        assert_eq!(
+            keypad.shortest_path(start, end),
+            vec![vec!['>', '>', '^', 'A'], vec!['^', '>', '>', 'A']]
+        );
     }
     #[test]
     fn test_horizontal_path() {
@@ -306,22 +365,22 @@ mod tests {
 
     #[test]
     fn test_directional_keypad() {
-        let layout = vec![
-            vec![' ', '^', 'A'],
-            vec!['<', 'v', '>'],
-        ];
+        let layout = vec![vec![' ', '^', 'A'], vec!['<', 'v', '>']];
         let mut keypad = Keypad::new(layout);
 
         let start = 'A';
         let end = '<';
-        assert_eq!(keypad.shortest_path(start, end), vec![vec!['v', '<', '<', 'A']]);
+        assert_eq!(
+            keypad.shortest_path(start, end),
+            vec![vec!['v', '<', '<', 'A']]
+        );
     }
 
     #[test]
-    fn test_three_robots(){
+    fn test_three_robots() {
         let code = "029A";
         let shortest_path = get_shortest_path_n_robots(code, 2);
-        assert_eq!(shortest_path.len(), 68);
+        assert_eq!(shortest_path, 68);
     }
 
     #[test]
@@ -330,35 +389,9 @@ mod tests {
         let shortest_path = get_shortest_path_n_robots(code, 2);
         // numeric part of code as usize
         let checksum = calculate_checksum(code, shortest_path);
-        assert_eq!(checksum, 68*29);
+        assert_eq!(checksum, 68 * 29);
     }
 
-
-
-    #[test]
-    fn test_dp_build_all_sequences_for_029a_first_robot() {
-
-        let layout = vec![
-            vec!['7', '8', '9'],
-            vec!['4', '5', '6'],
-            vec!['1', '2', '3'],
-            vec![' ', '0', 'A'],
-        ];
-        let mut keypad = Keypad::new(layout);
-        let code = "029A";
-        let results = build_all_sequences(&mut keypad, code);
-        let expected_paths: Vec<Vec<char>> = vec![
-            "<A^A>^^AvvvA".chars().collect(),
-            "<A^A^^>AvvvA".chars().collect(),
-        ];
-        for path in &expected_paths {
-            assert!(
-                results.contains(path),
-                "Missing expected path: {:?}",
-                path
-            );
-        }
-    }
     #[test]
     fn test_test_input() {
         let input_file = "test_input.txt";
@@ -371,9 +404,5 @@ mod tests {
             total_checksum += checksum;
         }
         assert_eq!(total_checksum, 126384);
-
     }
-
 }
-
-
