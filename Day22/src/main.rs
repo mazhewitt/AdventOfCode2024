@@ -64,7 +64,6 @@ fn find_best_sequence_for_secret(
                 && change_window[2] == group_of_changes.2
                 && change_window[3] == group_of_changes.3
             {
-                // The correct selling price is prices[i+4], not price_window[3]
                 Some(prices[i + 4] as u64)
             } else {
                 None
@@ -79,13 +78,13 @@ fn calculate_most_bananas(monkey_secrets: &[u64]) -> u64 {
             monkey_secrets
                 .par_iter() // Parallelize over monkey secrets
                 .map(|&monkey_secret| {
-                    let sequence = generate_sequence(monkey_secret); // Assume this generates the sequence
+                    let sequence = generate_sequence(monkey_secret);
                     let prices = calculate_prices(&sequence);
                     let price_changes = calculate_price_changes(&prices);
 
                     find_best_sequence_for_secret(&price_changes, &prices, group_of_changes)
                 })
-                .sum::<u64>() // Sum the bananas for this group of changes
+                .sum::<u64>()
         })
         .max()
         .unwrap_or(0) // Find the maximum bananas among all groups of changes
