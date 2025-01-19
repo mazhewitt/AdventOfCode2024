@@ -2,7 +2,10 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::fmt;
+use std::fs::File;
+use petgraph::dot::{Config, Dot};
 use petgraph::visit::Topo;
+use std::io::Write;
 
 fn main() {
     let filename = "input.txt";
@@ -55,8 +58,17 @@ struct Gate {
 
 #[derive(Debug, Clone)]
 enum NodeData {
-    Wire(),
+    Wire(Wire),
     Gate(Gate),
+}
+
+impl fmt::Display for NodeData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeData::Wire(wire) => write!(f, "{}", wire),
+            NodeData::Gate(gate) => write!(f, "{:?} -> {}", gate.op, gate.output),
+        }
+    }
 }
 
 fn parse_initial_values(lines: &[&str]) -> HashMap<Wire, bool> {
@@ -106,7 +118,7 @@ fn build_circuit_graph(gates: &[Gate]) -> DiGraph<NodeData, ()> {
     for gate in gates {
         for wire in &[gate.input1.clone(), gate.input2.clone(), gate.output.clone()] {
             if !wire_nodes.contains_key(wire) {
-                let node = graph.add_node(NodeData::Wire());
+                let node = graph.add_node(NodeData::Wire(wire.clone()));
                 wire_nodes.insert(wire.clone(), node);
             }
         }
@@ -164,7 +176,7 @@ fn evaluate_circuit_topo(
                 }
                 // If inputs are not yet available, the topological order should ensure they are processed first
             },
-            NodeData::Wire() => {
+            NodeData::Wire(..) => {
                 // Wires as nodes don't require processing
                 continue;
             },
@@ -189,6 +201,44 @@ fn wires_to_decimal(wire_values: &HashMap<Wire, bool>) -> u64 {
         .rev()
         // Fold the bits into a single decimal number
         .fold(0u64, |acc, bit| (acc << 1) | bit)
+}
+
+
+
+fn export_graphviz(graph: &DiGraph<NodeData, ()>) {
+    let dot = Dot::with_attr_getters(
+        graph,
+        &[Config::EdgeNoLabel],
+        // Edge attribute getter
+        &|_, edge| String::new(),
+        // Node attribute getter
+        &|_, (node_index, node_data)| {
+            match node_data {
+                NodeData::Wire(ref name) => {
+                    format!(
+                        "shape=ellipse, color=lightblue, fontname=\"Helvetica\", fontsize=10, label=\"{}\"",
+                        name
+                    )
+                }
+                NodeData::Gate(ref gate) => {
+                    let op = match gate.op {
+                        Op::And => "AND",
+                        Op::Or => "OR",
+                        Op::Xor => "XOR",
+                    };
+
+                    format!(
+                        "shape=box, color=lightgray, style=filled, fillcolor=white, fontname=\"Helvetica-Bold\", fontsize=12, label=\"{}\"",
+                        op
+                    )
+                }
+            }
+        },
+    );
+
+    // Write DOT to a file
+    let mut file = File::create("circuit_graph.dot").expect("Unable to create DOT file");
+    write!(file, "{:?}", dot).expect("Unable to write to DOT file");
 }
 
 #[cfg(test)]
@@ -231,4 +281,19 @@ mod tests {
         assert_eq!(decimal, 2024);
 
     }
+
+    #[test]
+    fn test_export_output() {
+        let filename = "input.txt";
+        let contents = std::fs::read_to_string(filename).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        let initial_wire_values = parse_initial_values(&lines);
+        let gates = parse_gates(&lines);
+        let graph = build_circuit_graph(&gates);
+        let wire_values = evaluate_circuit_topo(&graph, &initial_wire_values);
+        export_graphviz(&graph);
+    }
+
+    // z05, gdd, z09, cwt, css, jmv, pqt, z37
+    //
 }
